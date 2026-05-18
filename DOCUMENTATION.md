@@ -582,6 +582,15 @@ Verified by two controlled captures:
   data[7] = 0x04 → 0x14 → 0x24. High nibble walks 0 → 1 → 2; low
   nibble pinned at 0x4.
 
+**Startup interlock.** data[7] reflects lever position only, not
+drivetrain readiness. After power-on the motor controller requires the
+F/N/R lever to pass through Neutral before it will accept a drive
+direction: the tractor will not move even if the F or R nibble is
+present in data[7]. There is no CAN signal that distinguishes this
+"not-yet-armed" state from normal operation — the byte is identical in
+both cases. Applications must track power-on state independently and
+prompt the operator to cycle through Neutral before commanding motion.
+
 **Range → ground speed.** Range 1/2/3 are the L/M/H positions on the
 mechanical range gear shift lever (Low/Medium/High; the L-M-N-H lever
 also has a Neutral position, which disengages drive entirely — the
@@ -703,19 +712,53 @@ asserting when plug is inserted at 100 % SOC).
 
 ## Vehicle controller (SA 0xD0)
 
-### F100D0 — VC heartbeat — TENTATIVE
+### F100D0 — VC heartbeat — CONFIRMED (byte 0 OPC state)
 
 Same PGN as the BMS pack-status frame, disambiguated by source
-address.
+address. Broadcast at ~40 Hz.
 
-| byte 0 | Inferred meaning |
-|--------|------------------|
-| 0x00   | init             |
-| 0x0C   | ready            |
+| byte 0 | Meaning                          |
+|--------|----------------------------------|
+| 0x00   | Operator unseated / OPC cut off  |
+| 0x0C   | Operator seated / OPC enabled    |
 
-The transition is sharp and aligns with the operator-described wake-up
-event, which is what gives confidence in the labels. Other bytes
-change but haven't been decoded.
+Byte 0 is the authoritative OPC (Operator Presence Control) state on
+the CAN bus. The transition is a single clean step in both directions,
+confirmed across three captures (`otp-seatedon-unseatedoff.asc`,
+`otp-unseatedoff-seatedon.asc`, `otp-bouncing-5s.asc`). Other bytes
+remain 0xFF and have not been decoded.
+
+**OPC timer.** The VC does not trip instantly when the operator leaves
+the seat — there is a hardware grace timer (the OPC timer module; see
+below). In the bouncing captures with ~3-second off-seat intervals,
+byte 0 never left 0x0C, confirming the timer is longer than ~3 s.
+Exact duration is not yet measured; a sustained unseated capture with
+a known elapsed time would pin it.
+
+**Dashboard wrench indicator.** A blinking wrench appears on the
+cluster immediately when the operator leaves the seat, even before the
+OPC timer fires and byte 0 transitions. The wrench is therefore driven
+by a discrete seat-switch input directly to a cluster pin, not by the
+CAN OPC state. This is consistent with schematic 5.9, which wires the
+seat switch through discrete signals.
+
+**OPC shutdown sequence** (from `otp-seatedon-unseatedoff.asc`,
+relative to OPC trip):
+
+```
+t+0ms     18F100D0 b0:  0x0C → 0x00   VC declares operator absent
+t+354ms   0CFF21CA:     last motor frame (motor controller goes silent)
+t+361ms   18F100D0:     last VC frame (VC goes silent)
+t+10.4s   18F108F3:     BMS fires codes 124, 140, 142, 143, 144, 145
+t+41.7s   18F108F3:     BMS stops broadcasting (end of capture)
+```
+
+The BMS fault codes that fire ~10 s after shutdown are **not real
+faults** — they are the BMS reacting to CAN silence after the rest of
+the bus goes dark. Code 124 ("Clock fault") and the maintenance codes
+(140/142/143/144/145) appear because the BMS loses contact with the
+other nodes and interprets the silence as communication errors. The BMS
+is the last node still broadcasting, talking to a dead bus.
 
 SA 0xF4 also acts as a vehicle-side requester (sends 1806E5F4 →
 charger 0xE5). Whether 0xF4 is a separate physical module or a logical
@@ -724,9 +767,8 @@ address inside another ECU's firmware is open.
 The parts catalog (Table 65, Ref 10) names a separate **OPC (Operator
 Presence Control) timer module** — "UNIT ENGINE SHUT OFF CONTROLLER
 TIMER (SEAT AND PARK OPC)" — gating shutdown on the seat switch and
-park brake. The F100D0 heartbeat's 0x00 → 0x0C wake-up transition is
-consistent with an OPC-style module asserting "operator present, park
-brake released" once those preconditions are met.
+park brake. The F100D0 heartbeat's OPC-state byte is consistent with
+this module broadcasting its interlock status on CAN.
 
 **Tension with service manual schematic 5.10.** That schematic shows
 the main CAN bus carrying exactly four nodes (MC, BMS, Charger,
@@ -1041,6 +1083,9 @@ Code 51 is listed out of numeric order in the manual.
 - **SA 0x12 role.** Emits a constant FF21 payload
   `01 00 00 00 00 00 00 00`. Distinct from FF21CA from 0xCA despite
   sharing a PGN.
+- **OPC timer duration — ~6 s.** The VC waits approximately 6 seconds
+  after the operator leaves the seat before tripping F100D0 byte 0 to
+  0x00.
 - **SA 0xD0 and 0xF4 physical home.** Schematic 5.10 only documents
   four CAN nodes (MC, BMS, Charger, Cluster). The OPC module shown on
   schematic 5.9 is wired entirely discretely (no CAN). So either the
