@@ -55,11 +55,11 @@ off the pack (parts catalog Table 65).
 | Rated charge (DC / AC)    | —                           | 78 A / 39 A          |
 | Pack vendor               | "Escorts Solution"          | (BMS GUI footer "ESCORTS-INTERNAL") |
 | Main HV fuse              | 350 A                       | —                    |
-| Bus baud                  | 250 kbaud (J1939 default)   | Confirmed (capture)  |
+| Bus baud                  | 250 kbaud (J1939 default)   | —                    |
 | Cluster supply            | 12 V (accessory, not pack)  | Hardware             |
 
 The 73 V / 350 Ah service-manual nameplate and the 72 V / 300 Ah BMS
-GUI readout disagree by ~17 % on capacity. The GUI may reflect a
+GUI readout disagree by ~17 % on capacity. The BMS GUI may reflect a
 derated/usable capacity (top + bottom buffer excluded), or the unit
 shipped with different nameplate parameters than the spec table —
 either is plausible. The scripts' Wh display in `solectrac-analyze.py`
@@ -361,7 +361,7 @@ Smallest spread observed across all captures: 3 mV (124 frames in
 | 1    | data[0] | 0x03 constant                                               |
 | 2    | data[1] | **Pack terminal voltage**: V = raw × 0.1 + 76.8             |
 | 3..4 | data[2..3] BE | **Signed pack current**: A = (be16 − 0x7D00) × 0.1    |
-| 5    | data[4] | **BMS-published SOC** (TENTATIVE; calibrated top 10 % only) |
+| 5    | data[4] | **BMS-published SOC** (TENTATIVE; two-point fit at 80 %/90 %) |
 | 6    | data[5] | 0xFA constant — **leading SOH candidate** (250 raw × 0.4 %/bit = 100 %) |
 | 7    | data[6] | 0x14 (= 20) — series cell count                             |
 | 8    | data[7] | 0x00 constant                                               |
@@ -403,12 +403,13 @@ Always read both bytes BE with the bias.
 
 **SOC (data[4])** is TENTATIVE. Streamer fit:
 
-    SOC % = data[4] × 0.385 + 3.8
+    SOC % = data[4] × 0.4 − 0.8
 
-calibrated on (raw 224, 90 %) and (raw 250, 100 %) from
-`charging-120V-90ish-to-100.asc`, saturating at raw 250 in
-`soc-100-idle.asc`. Only the top 10 % of the range has been observed;
-LSB and below-90 % linearity want a deeper-discharge capture.
+calibrated against two direct dashboard-screen readings: raw 202 at
+80 % and raw 227 at 90 %. Slope = 10/25 = 0.4, intercept = −0.8. Raw
+saturates at 250 (= 99.2 %) in `soc-100-idle.asc`. Calibration points
+still sit in the top ~20 % of the range; linearity below 80 % wants a
+deeper-discharge capture.
 
 **SOH candidate (data[5])** TENTATIVE. data[5] is 0xFA = 250 across
 every capture (42 captures, all BMS frames swept by
@@ -1076,10 +1077,11 @@ Code 51 is listed out of numeric order in the manual.
   been seen nonzero. Single-code captures would replicate the
   popcount-matches-displayed argument that nailed byte 7
   unambiguously.
-- **SOC linearity below 90 %.** F100F3 data[4] is calibrated only on
-  the top 10 %. A sustained discharge capture from a known starting
-  SOC down to a lower known SOC would lock in the slope and tell us
-  whether the field is truly linear or only locally linear near full.
+- **SOC linearity below 80 %.** F100F3 data[4] is calibrated against
+  two direct screen readings at 80 % and 90 %, both still in the top
+  ~20 % of the range. A sustained discharge capture down to a lower
+  known SOC would confirm whether the field is truly linear or only
+  locally linear near full.
 - **SOH confirmation.** F100F3 data[5] = 0xFA (250 raw × 0.4 %/bit =
   100 %) is the leading candidate — the only byte across 42 captures
   that is both constant everywhere and decodes to 100 % under a
