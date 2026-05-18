@@ -1259,6 +1259,10 @@ def render_pack(state: State, mains_v: float, efficiency: float,
     ocv_row = _soc_row("OCV", state.soc_pct)
     if ocv_row is not None:
         t.add_row("SOC (OCV)", ocv_row)
+    if state.bms_soc_pct.value is not None:
+        kwh_remaining = state.bms_soc_pct.value / 100.0 * PACK_CAPACITY_WH / 1000.0
+        kwh_total = PACK_CAPACITY_WH / 1000.0
+        t.add_row("remaining", Text(f"{kwh_remaining:.1f} / {kwh_total:.1f} kWh"))
 
     # Runtime-to-empty estimate. Symmetric with the charger panel's
     # ETA-to-100%: same soc_history slope, opposite sign. Only shown
