@@ -1226,8 +1226,8 @@ def render_pack(state: State, mains_v: float, efficiency: float,
         t.add_row("", "")
         t.add_row("session draw", Text(f"{wh_out:.0f} Wh", style="red"))
         t.add_row("session charge", Text(f"{wh_in:.0f} Wh", style="green"))
-        net = wh_out - wh_in
-        net_style = "red" if net > 0 else "green"
+        net = wh_in - wh_out
+        net_style = "green" if net > 0 else "red"
         t.add_row("session net",
                   Text(f"{net:+.0f} Wh  "
                        f"({net / PACK_CAPACITY_WH * 100:+.1f}% of pack)",
@@ -1447,26 +1447,23 @@ def render_cells(state: State, now: float) -> Panel:
                      title="Cell voltages", border_style="blue")
 
     lo, hi = min(vals), max(vals)
-    span = max(1, hi - lo)
-    bar_w = 6
+    mean = sum(vals) / len(vals)
     cols = 4  # cells per row (row-major: 5 rows × 4 cols for 20 cells)
 
     t = Table.grid(padding=(0, 1))
     for _ in range(cols):
         t.add_column(justify="right")
-        t.add_column()
+        t.add_column(justify="right")
         t.add_column(justify="right")
 
     row: list = []
     for i, c in enumerate(cells):
         n = i + 1  # BMS-style 1-based display
         if c.value is None:
-            bar = Text("·" * bar_w, style="dim")
             mv_text = Text("---", style="dim")
+            delta_text = Text("", style="dim")
         else:
-            frac = (c.value - lo) / span
-            filled = int(round(frac * bar_w))
-            bar = Text("█" * filled + "░" * (bar_w - filled))
+            delta = int(round(c.value - mean))
             if c.value == hi:
                 style = "bold green"
             elif c.value == lo:
@@ -1476,7 +1473,9 @@ def render_cells(state: State, now: float) -> Panel:
             else:
                 style = None
             mv_text = Text(f"{int(c.value)} mV", style=style)
-        row.extend([f"#{n:>2}", bar, mv_text])
+            delta_text = Text(f"({delta:+d})", style=style)
+        label = f"#{n:>2}" if (i % cols == 0) else f"  #{n:>2}"
+        row.extend([label, mv_text, delta_text])
         if len(row) == cols * 3:
             t.add_row(*row)
             row = []
@@ -1491,7 +1490,8 @@ def render_cells(state: State, now: float) -> Panel:
         summary.append(
             f"  BMS reports max #{int(state.max_cell_n.value)}, "
             f"min #{int(state.min_cell_n.value)}, "
-            f"spread {int(state.spread_mv.value or 0)} mV"
+            f"spread {int(state.spread_mv.value or 0)} mV "
+            f"({int(state.spread_mv.value or 0) / mean * 100:.2f}%)"
         )
 
     return Panel(Group(t, summary),
