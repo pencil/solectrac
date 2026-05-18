@@ -1105,7 +1105,7 @@ def fmt(c: Channel, fmt_spec: str = "{:.2f}", unit: str = "",
     return Text(text)
 
 
-def render_header(state: State, now: float) -> Panel:
+def render_header(state: State, now: float, mode: str = "live") -> Panel:
     uptime = now - state.started_at
     h = int(uptime // 3600)
     m = int((uptime % 3600) // 60)
@@ -1116,7 +1116,8 @@ def render_header(state: State, now: float) -> Panel:
             f"Decoded: {state.decoded:,}    "
             f"Rate: {rate:.0f} fps    "
             f"Errors: {state.errors}")
-    return Panel(Text(line), title="Solectrac BMS — LIVE",
+    label = "LIVE" if mode == "live" else "REPLAY"
+    return Panel(Text(line), title=f"Solectrac — {label}",
                  border_style="cyan")
 
 
@@ -1785,7 +1786,7 @@ def render_alerts(alerts: List[Tuple[str, str]]) -> Panel:
     return Panel(t, title="Alerts", border_style=border)
 
 
-def build_layout(state: State, args, now: float) -> Layout:
+def build_layout(state: State, args, now: float, mode: str = "live") -> Layout:
     layout = Layout()
     layout.split_column(
         Layout(name="header", size=3),
@@ -1795,7 +1796,7 @@ def build_layout(state: State, args, now: float) -> Layout:
         Layout(name="faults", size=15),
         Layout(name="alerts", size=8),
     )
-    layout["header"].update(render_header(state, now))
+    layout["header"].update(render_header(state, now, mode))
     layout["row1"].split_row(
         Layout(render_pack(state, args.mains_v, args.efficiency, now)),
         Layout(render_charger(state, now)),
@@ -1919,16 +1920,16 @@ def main() -> int:
             while reader.is_alive() and not stop_evt.is_set():
                 reader.join(timeout=1.0)
         else:
-            with Live(build_layout(state, args, time.monotonic()),
+            with Live(build_layout(state, args, time.monotonic(), mode),
                       refresh_per_second=args.refresh_hz,
                       screen=True) as live:
                 tick = 1.0 / max(args.refresh_hz, 1.0)
                 while reader.is_alive() and not stop_evt.is_set():
-                    live.update(build_layout(state, args, time.monotonic()))
+                    live.update(build_layout(state, args, time.monotonic(), mode))
                     time.sleep(tick)
                 # Keep the final frame visible briefly when replay ends.
                 if args.replay:
-                    live.update(build_layout(state, args, time.monotonic()))
+                    live.update(build_layout(state, args, time.monotonic(), mode))
                     time.sleep(0.5)
     except KeyboardInterrupt:
         pass
