@@ -593,6 +593,16 @@ String buildJson() {
         mot["direction"]     = g_motor.direction;
         mot["range_gear"]    = g_motor.range_gear;
         mot["throttle_raw"]  = g_motor.throttle_raw;
+        // Ground speed from RPM × range (Turf/Industrial tire calibration,
+        // per Operator Manual p34; Agri tires would need different coeffs).
+        if (g_motor.range_gear >= 1 && g_motor.range_gear <= 3) {
+            static const float KMH_PER_RPM[3] = {
+                5.7f / 2800.0f, 8.6f / 2800.0f, 17.0f / 2800.0f
+            };
+            float kmh = g_motor.rpm_magnitude * KMH_PER_RPM[g_motor.range_gear - 1];
+            addFloat(mot, "speed_kmh", kmh, 2);
+            addFloat(mot, "speed_mph", kmh * 0.6213712f, 2);
+        }
         if (g_motor.controller_temp_c != INT8_MIN)
             mot["controller_temp_c"] = g_motor.controller_temp_c;
         if (g_motor.motor_temp_c != INT8_MIN)
@@ -662,33 +672,66 @@ void handleRoot() {
 <title>Solectrac</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#111;color:#ddd;font-family:system-ui,sans-serif;padding:10px;max-width:600px;margin:0 auto}
-h3{font-size:.68em;text-transform:uppercase;letter-spacing:.1em;color:#555;margin-bottom:8px}
+body{background:#f0f2f5;color:#212121;font-family:system-ui,sans-serif;padding:10px;max-width:600px;margin:0 auto}
+h3{font-size:.68em;text-transform:uppercase;letter-spacing:.1em;color:#757575;margin-bottom:8px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
 @media(max-width:400px){.g4{grid-template-columns:1fr 1fr}}
-.card{background:#1e1e1e;border-radius:10px;padding:12px}
+.card{background:#fff;border-radius:10px;padding:12px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .big{font-size:1.9em;font-weight:700;line-height:1.1}
-.unit{font-size:.5em;color:#777;font-weight:400}
-.sub{font-size:.72em;color:#555;margin-top:2px}
+.unit{font-size:.5em;color:#9e9e9e;font-weight:400}
+.sub{font-size:.72em;color:#757575;margin-top:2px}
 .kv{display:flex;justify-content:space-between;align-items:center;font-size:.82em;padding:2px 0}
-.kv .k{color:#555}
+.kv .k{color:#757575}
+.gauges{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.gauge{display:block;width:100%}
+.gauges h3{text-align:center}
 .dir{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
-.dirbtn{background:#1e1e1e;border-radius:10px;padding:16px 0;text-align:center;font-size:1.8em;font-weight:700;color:#3a3a3a;letter-spacing:.05em}
-.dirbtn.on{background:#1a3520;color:#6dbf6d}
+.dirbtn{background:#fff;border-radius:10px;padding:16px 0;text-align:center;font-size:1.8em;font-weight:700;color:#bdbdbd;letter-spacing:.05em;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.dirbtn.on{background:#c8e6c9;color:#1b5e20}
 .pills{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
-.pill{padding:3px 10px;border-radius:20px;font-size:.72em;background:#222;color:#555}
-.pill.on{background:#1a3520;color:#6dbf6d}
-.alert{background:#6f0000;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:.9em;font-weight:600}
-#foot{text-align:center;font-size:.65em;color:#444;margin-top:10px;padding-bottom:4px}
-.ok{color:#4caf50}.warn{color:#ff9800}.bad{color:#ef5350}
+.pill{padding:3px 10px;border-radius:20px;font-size:.72em;background:#eee;color:#9e9e9e}
+.pill.on{background:#c8e6c9;color:#1b5e20}
+.alert{background:#ffcdd2;color:#b71c1c;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:.9em;font-weight:600}
+#foot{text-align:center;font-size:.65em;color:#9e9e9e;margin-top:10px;padding-bottom:4px}
+.ok{color:#2e7d32}.warn{color:#ef6c00}.bad{color:#c62828}
 </style>
 </head>
 <body>
 <div id="al"></div>
 <div class="g4" id="kpi"></div>
-<div class="card" style="margin-bottom:8px"><h3>Power Summary</h3><div id="psum"></div></div>
+<div class="card" style="margin-bottom:8px">
+<div class="gauges">
+<div>
+<h3>Speed</h3>
+<svg class="gauge" viewBox="0 0 200 120">
+  <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#e0e0e0" stroke-width="14" stroke-linecap="round"/>
+  <path id="sprog" fill="none" stroke="#4caf50" stroke-width="14" stroke-linecap="round"/>
+  <line id="sneed" x1="100" y1="100" x2="100" y2="30" stroke="#c62828" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="100" cy="100" r="5" fill="#c62828"/>
+  <text x="20" y="116" text-anchor="middle" font-size="9" fill="#757575">0</text>
+  <text x="180" y="116" text-anchor="middle" font-size="9" fill="#757575">11 mph</text>
+  <text x="100" y="78" text-anchor="middle" font-size="26" font-weight="700" fill="#212121" id="sval">–</text>
+  <text x="100" y="92" text-anchor="middle" font-size="9" fill="#9e9e9e" id="sunit">mph</text>
+</svg>
+</div>
+<div>
+<h3>Power</h3>
+<svg class="gauge" viewBox="0 0 200 120">
+  <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#e0e0e0" stroke-width="14" stroke-linecap="round"/>
+  <path id="pprog" fill="none" stroke="#4caf50" stroke-width="14" stroke-linecap="round"/>
+  <line id="pneed" x1="100" y1="100" x2="100" y2="30" stroke="#c62828" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="100" cy="100" r="5" fill="#c62828"/>
+  <text x="20" y="116" text-anchor="middle" font-size="9" fill="#757575">0</text>
+  <text x="180" y="116" text-anchor="middle" font-size="9" fill="#757575">15 kW</text>
+  <text x="100" y="78" text-anchor="middle" font-size="26" font-weight="700" fill="#212121" id="pval">–</text>
+  <text x="100" y="92" text-anchor="middle" font-size="9" fill="#9e9e9e" id="punit">kW</text>
+</svg>
+</div>
+</div>
+</div>
 <div class="dir" id="dir"></div>
+<div class="card" style="margin-bottom:8px"><h3>Power Summary</h3><div id="psum"></div></div>
 <div class="g2" id="mid"></div>
 <div class="pills" id="flags"></div>
 <div class="g2" id="bot"></div>
@@ -735,6 +778,29 @@ function update(d){
     kv('Session charge',fwh(s.wh_charged))+
     kv('Session net',(s.wh_net!=null&&s.wh_net>0?'+':'')+fwh(s.wh_net))+
     kv(etaLabel,feta(etaVal));
+  // Gauges (speed + power)
+  function setGauge(val,max,progId,needId){
+    var cx=100,cy=100,r=80;
+    var pr=document.getElementById(progId),nd=document.getElementById(needId);
+    if(val==null){
+      pr.setAttribute('d','');
+      nd.setAttribute('x2',cx);nd.setAttribute('y2',cy-(r-12));
+      return;
+    }
+    var frac=Math.max(0,Math.min(val/max,1));
+    var th=Math.PI*(1-frac);
+    var ex=cx+r*Math.cos(th),ey=cy-r*Math.sin(th);
+    var nr=r-12,nx=cx+nr*Math.cos(th),ny=cy-nr*Math.sin(th);
+    pr.setAttribute('d',val>0.05?'M '+(cx-r)+' '+cy+' A '+r+' '+r+' 0 0 1 '+ex.toFixed(2)+' '+ey.toFixed(2):'');
+    nd.setAttribute('x2',nx.toFixed(2));nd.setAttribute('y2',ny.toFixed(2));
+  }
+  setGauge(m.speed_mph,11,'sprog','sneed');
+  document.getElementById('sval').textContent=m.speed_mph!=null?m.speed_mph.toFixed(1):'–';
+  document.getElementById('sunit').textContent=m.speed_mph!=null?'mph ('+(m.speed_kmh!=null?m.speed_kmh.toFixed(1):'–')+' km/h)':'mph';
+  var pkw=pwr!=null?Math.abs(pwr)/1000:null;
+  setGauge(pkw,15,'pprog','pneed');
+  document.getElementById('pval').textContent=pkw!=null?pkw.toFixed(1):'–';
+  document.getElementById('punit').textContent=pkw!=null?'kW ('+Math.round(pkw/15*100)+'%)':'kW';
   document.getElementById('dir').innerHTML=
     [['F',1],['N',0],['R',-1]].map(function(x){
       return'<div class="dirbtn '+(m.direction===x[1]?'on':'')+'">'+x[0]+'</div>';
