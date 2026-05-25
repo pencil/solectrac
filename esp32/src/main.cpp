@@ -909,6 +909,7 @@ void setup() {
     WiFi.mode(WIFI_AP_STA);
     g_ap_running = WiFi.softAP(AP_SSID, AP_PASS);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
+    WiFi.setSleep(WIFI_PS_NONE);
 
     // Wildcard DNS on the soft-AP: any hostname (solectrac.local, solectrac,
     // captive-portal probes, etc.) resolves to the board's AP IP. Needed
