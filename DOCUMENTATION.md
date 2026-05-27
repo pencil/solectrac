@@ -1,6 +1,6 @@
 # Solectrac CAN bus — system documentation
 
-Reverse-engineered protocol and hardware documentation for a Solectrac electric
+CAN protocol and hardware documentation for a Solectrac electric
 tractork. All decode information is derived from captured CAN traffic, vendor
 manual tables, the COBO cluster datasheet, the "BMS Update" document, the
 Solectrac Parts Catalog (e25), and live injection tests on the tractor.
@@ -1267,88 +1267,25 @@ Code 51 is listed out of numeric order in the manual.
 
 ## Sources
 
-- COBO ECO MATRIX VT3 datasheet:
-  https://www.si-parts.com/cataloghi_cobo/display-quadri-bordo/ECO_MATRIX_VT3.pdf
-- COBO product page (Faresin 12 V variant):
-  https://www.si-parts.com/en/instruments-clusters/13181-eco-matrix-faresin-12v-panel.html
-- COBO Group corporate page: https://www.cobogroup.net/
-- COBO USA distribution: https://www.cobointernational.com/
-- "BMS Update" document:
-  https://docs.thebackyard.engineer/solectrac/troubleshooting-guides/documentation
-- Solectrac master schematic set (harness wiring + CAN topology
-  diagrams; harness sheet has the three labelling errata documented
-  above): https://solectracsupport.com/support/manuals
-- **FT 25G service manual** (319 pages, dated 2023-07-13) — the
-  primary electrical/CAN authority for this vehicle:
-  https://solectracsupport.com/FT_25G_Service_manual-10-08-2023.pdf
-  Key section anchors:
-  - §**Cluster & Dashboard Switches** (p7) — cluster indicators, mode
-    switches, RPM caps per S/N/F (S<2000, N<2500, F<2800, R<2240).
-  - §**Battery** (p20) — pack nameplate (73 V / 350 Ah / 20S4P / 25.5
-    kWh NMC, cell `SEPNI-8688190P-17.5AH-5P`); BMS connector
-    `RT061412SNHEC03` 12-pin; per-DTC troubleshooting (CAN on field
-    pins D/E confirmed via 60 Ω test in DTC 125, page 30).
-  - §**Motor** (p60) — 15 kW AC induction, 90 Nm, 2800 RPM, 200 A
-    controller, "KEC" vendor hint, 2-channel A/B quadrature encoder
-    (no Z pulse, PPR not stated).
-  - §**E-Box** (p73) — Curtis controller named explicitly, Albright
-    SW200 main contactor, FT25G vs FT25G HST connector differences.
-  - §**Schematics** (p168) — internal index 5.1..5.16. **5.10 CAN
-    Connection** is the authoritative bus topology (4 nodes); **5.11
-    E-Hydraulic Controller** proves the e-hydraulic has zero CAN
-    pins; **5.7 BMS** shows the `CANDE-H/L` debug pair; **5.8
-    Diagnostic Connector** confirms standard OBD-II HS-CAN pinout
-    (pin 6 CAN_H, pin 14 CAN_L).
-  - §**Error Code** (p187) — Motor Controller fault table (J1939 SPN
-    + Curtis-internal short code 12..99) and BMS fault table (codes
-    100..146, all shared Message ID `0x18F108F3` = priority 6, PGN
-    F108, SA 0xF3).
-  - §**Hydraulic System** (p295) — confirms lift / 3-point / remotes
-    are fully mechanical with zero electrical interface.
-- **CET Operator Manual** (63 pages, the international "Compact
+- [COBO ECO MATRIX VT3 datasheet](https://www.si-parts.com/cataloghi_cobo/display-quadri-bordo/ECO_MATRIX_VT3.pdf):
+  documentation for the screen/cluster.
+- [COBO product page (Faresin 12 V variant)](https://www.si-parts.com/en/instruments-clusters/13181-eco-matrix-faresin-12v-panel.html): product page for the screen/cluster.
+- ["BMS Update" document](https://docs.thebackyard.engineer/solectrac/troubleshooting-guides/documentation)
+- [Solectrac master schematic set](https://solectracsupport.com/support/manuals): Harness wiring + CAN topology
+  diagrams (a few errors are detailed in the document).
+- [FT 25G service manual](https://solectracsupport.com/FT_25G_Service_manual-10-08-2023.pdf) (319 pages, dated 2023-07-13) — the
+  primary electrical/CAN authority for this vehicle.
+- [CET Operator Manual](https://solectracsupport.com/FT25GUSAOPM.pdf) (63 pages, the international "Compact
   Electric Tractor" rebadge of the FT 25G):
-  https://solectracsupport.com/FT25GUSAOPM.pdf
-  The PDF has no text layer (CorelDRAW vector export), so text search
-  doesn't work; read by page number. Key sections:
-  - p20–21 PTO ratios: rear 540 PTO at 2504 motor RPM; rear 540E at
-    2035 motor RPM. (Manual also lists a mid-PTO option at 2200 RPM
-    / 2410 motor RPM — not fitted on this tractor.)
-  - p33 spec table — three-range constant-mesh transmission with
-    L/M/N/H lever, "Bull Gear" rear-axle reduction. Note: this table
-    lists max motor torque as **84 Nm** vs the FT 25G service
-    manual's 90 Nm — small discrepancy, likely rebadge nameplate
-    variation.
-  - p34 Travel-speed table — full motor-RPM → ground-speed table for
-    both tire options, the source for the "Range → ground speed"
-    section above.
-- **UDAAN = UDAN iBMS Upper Utility** from Anhui UDAN Technology
-  Co., Ltd. — Chinese BMS firmware/diagnostic-tool vendor. (The
-  physical pack on this tractor is manufactured by Soundon New
-  Energy Technology Co., Ltd.; see "Vehicle and pack".) Public download:
-  `https://www.ievcloud.com/burner_en.html`. Corporate site:
-  `https://www.udantech.com/en/`. V3.1 user manual (35 pages, dated
-  2023-10-07) is in this repo at
-  `docs/UDAN_iBMS_Upper_Utility_v3.1_manual.pdf`. CAN @ 250 kbit/s,
-  supports CANalyst-II / PCAN / USBCAN dongles. `Comm. Message` +
-  `Data Storage` recording features produce a time-aligned raw-CAN +
-  labeled-UI-field log — effectively an empirical DBC for the BMS
-  broadcast frames. Login required for full read/write; view-only
-  mode permitted without login.
-- Solectrac Parts Catalog (e25):
-  https://docs.thebackyard.engineer/solectrac/troubleshooting-guides/documentation
-  — source for the named components referenced throughout this
-  document: Curtis 1238E MC (Table 60), Kelly KLS7212M/KLS7218
-  hydraulic controller (Table 46), Albright SW200 main contactor +
-  discrete hydraulic contactor + 350 A cut-off fuse (Table 60),
-  500 W DC-DC converter + 12 V/20 Ah accessory battery + OPC timer
-  module + motor encoder pigtail (Table 65), 72 V 300 Ah pack box
-  (Table 61), "FARMTRAC" key ignition (Table 67). Note: the Kelly
-  identification predates the FT 25G service manual; schematic 5.11
-  shows the e-hydraulic controller has no CAN pins regardless of
-  which controller it actually is.
-- Curtis 1238 controller manual — public fault-code-list reference
-  for the MC short codes reproduced above.
-- Kelly KLS7218MC / KLS7218NC CAN protocol:
-  `docs/COMPAGE DOCUMENT KLS7218MC & KLS718NC FORMAT.pdf` — kept for
+- [UDAN iBMS Upper Utility](https://www.ievcloud.com/burner_en.html) from [Anhui UDAN Technology
+  Co., Ltd.](https://www.udantech.com/en/) — Chinese BMS firmware/diagnostic-tool vendor.
+  * [User manual](https://img1.wsimg.com/blobby/go/e508f0fc-822a-4879-b2a3-a5a9c4be953e/downloads/985f520a-9b18-4315-bb99-f803a6a45437/UDAN%20BMS%20upper%20computer%20software%20user%20manual%20V.pdf?ver=1752289934030)
+- [Solectrac Parts Catalog (e25)](https://docs.thebackyard.engineer/solectrac/troubleshooting-guides/documentation):
+  source for the named components referenced throughout this
+  document.
+- [Curtis 1238 controller manual](https://www.thunderstruck-ev.com/Manuals/1234_36_38%20Manual%20Rev%20Feb%2009.pdf):
+  public fault-code-list reference for the MC short codes reproduced above.
+- [Kelly KLS7218MC / KLS7218NC CAN protocol](https://docs.thebackyard.engineer/solectrac/troubleshooting-guides/documentation):
+  kept for
   reference, but the e-hydraulic controller on this vehicle is not
   wired to a CAN bus, so the Kelly protocol is not applicable here.
