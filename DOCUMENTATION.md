@@ -316,7 +316,7 @@ elsewhere in this document.
 | 0xF4 | Vehicle controller (drive-side)       | Sends 1806E5F4 (request to charger)                          |
 | 0xD0 | Vehicle controller / dashboard accy.  | Periodic F100D0 heartbeat; byte-0 0x00 → 0x0C at wake-up     |
 | 0xCA | Motor controller / drive ECU          | DM1 (FECA) + FF21 motor telemetry (~85 Hz); silent while charging |
-| 0x12 | Unknown                               | Constant FF21 payload `01 00 00 00 00 00 00 00`              |
+| 0x12 | Unknown                               | FF21 payload `01 00 00 00 00 00 00 00` in steady state; transitions through `00 00 00 00 00 00 00 00` for ~1 s right after key-on (byte 0 toggles 0x00 → 0x01) |
 | 0x041 (11-bit) | Ignition event marker (non-J1939) | Standard CAN 2.0A, not J1939. Constant payload `20 12 01 00 00 00 01 11`. Observed exactly twice per full ignition cycle (one frame at key-on, one at key-off); absent from captures that don't span a power transition. Source ECU unconfirmed. |
 
 ### BMS (SA 0xF3)
@@ -1245,9 +1245,10 @@ Code 51 is listed out of numeric order in the manual.
 - **FF21CA byte 1, 4, 6 semantics.** data[1] and data[6] are
   constant-zero fault-bitmap candidates; data[4] is a three-state
   field changing near startup calibration.
-- **SA 0x12 role.** Emits a constant FF21 payload
-  `01 00 00 00 00 00 00 00`. Distinct from FF21CA from 0xCA despite
-  sharing a PGN.
+- **SA 0x12 role.** Emits FF21 payload `01 00 00 00 00 00 00 00` in
+  steady state; byte 0 transitions through `0x00` for ~1 s immediately
+  after a key-on 0x41 marker before settling at `0x01`. Distinct from
+  FF21CA from 0xCA despite sharing a PGN.
 - **SA 0xD0 and 0xF4 physical home.** Schematic 5.10 only documents
   four CAN nodes (MC, BMS, Charger, Cluster). The OPC module shown on
   schematic 5.9 is wired entirely discretely (no CAN). So either the

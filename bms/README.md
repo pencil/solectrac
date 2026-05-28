@@ -140,7 +140,7 @@ Sample `0x0102` payload: `41 41 41 41 40 41 41` → ~22 °C across 7 probes.
 | 6..7   | BE i16  | Signed pack current × 10 (A). **Positive = charging into pack, negative = discharging** — opposite sign convention from J1939 `F100F3` data[2..3] | `0xFFED` = −1.9 A (idle standby draw); +194 (`0x00C2`) during 120 V charging |
 | 8      | u8      | `0x00` padding                       | constant        |
 | 9      | u8      | Cell-mV spread (max − min)           | 4–15 mV; r ≈ 0.83 vs `0x2820`/`0x2828`; exact match ≈ 76 % of the time (small skew from staggered polls) |
-| 10     | u8      | Pack-current state code — TENTATIVE. Three observed values: **51 = charge / idle**, **50 = discharge**, **52 = brief (rare, idle only)**. Hypothesis: a quantized current-direction state. Counter-evidence vs `WakeupSignal` enum: byte 10 stays constant at 51 across an entire 120 V charging session (where `WakeupSignal` should switch from KL15 to OBC); negatively confirms NOT WakeupSignal. Mirrored 99.9 % by `0x2810` byte 9. Negatively confirms NOT max-temp raw (r = 0.0 vs `0x2830` top-1) | discharge → mostly 50; idle/charge → mostly 51 |
+| 10     | u8      | Pack-current state code — TENTATIVE. Three observed values: **51 = charge / idle**, **50 = discharge**, **52 = brief (rare, idle only)**. Hypothesis: a quantized current-direction state. **Not** `WakeupSignal`: an enum that latches the wake source on sleep→wake transition should be constant for the entire awake session, but byte 10 **varies within single wake sessions** — both observed drive captures (KL15-woken throughout) show byte 10 mixing 50 and 51 (e.g. 108×50 + 36×51 in a 216 s session). Mirrored 99.9 % by `0x2810` byte 9. Also rules out max-temp raw (r = 0.0 vs `0x2830` top-1) | discharge → mostly 50; idle/charge → mostly 51 |
 | 11     | u8      | `0x06` constant (struct version tag) | constant        |
 
 ### Peak data — DID cluster `0x2820`/`0x2828`/`0x2830`/`0x2838` (UDAN `0x06`)
@@ -396,8 +396,11 @@ These are polled by the iBMS but not yet mapped to a known UDAN message:
 | `0x0200`, `0x0201`, `0x0203`, `0x0204`, `0x0206`–`0x020B` | Mostly empty; `0x0202` and `0x0205` decoded above |
 | `0x0620`, `0x0621`, `0x0648`                           | Mostly-empty sub-block, UNKNOWN |
 | `0x0641`–`0x0647`                                      | Per-channel 1-byte values (7 total), UNKNOWN |
-| `0x0E21`, `0x0F50`, `0x0F60`                           | UNKNOWN small values |
-| `0x0E70`–`0x0E72`, `0x0EF0`, `0x0F10`, `0x0F30`        | Signal detection / on-board rails |
+| `0x0E21`                                               | UNKNOWN small value |
+| `0x0F50`                                               | 1-byte response, `0x01` in every KL15-woken capture — **leading `WakeupSignal` candidate** (BatteryPackMessage protobuf field 3, varint enum with sources KL15 / OBC / RTC). Confirmation needs a future capture in OBC mode that polls this DID. |
+| `0x0F60`, `0x0F10`                                     | 3-byte constants (`07 00 80` and `00 01 00` respectively) in KL15 captures; sit next to `0x0F50` in the "On-board volt" sub-tab — possibly KL15/OBC/RTC rail voltages or wake-related status. |
+| `0x0F30`                                               | 4 bytes, toggles between `00 00 00 00` and `00 0B 00 00` with byte 1 flipping briefly to `0x0B` — signal-detection event flag. |
+| `0x0E70`–`0x0E72`, `0x0EF0`                            | Signal detection / on-board rails — all-zero in observed captures |
 | `0x0EA0`, `0x0EA1`                                     | Cell info tab — balancing. Both all-`0xFF` in observed captures (no balancing active; cell delta < 11 mV) |
 | `0x0ED0`–`0x0ED7`                                      | Open-wire / cell-monitor flags. Of 8 DIDs only `0x0ED0`, `0x0ED1`, `0x0ED2`, `0x0ED5` respond on this pack; `0x0ED3`/`0x0ED4`/`0x0ED6`/`0x0ED7` return no response. `0x0ED0`/`0x0ED1` 4-byte payloads: bytes 0..1 `FF FF` (no-fault sentinel mask), bytes 2..3 BE u16 oscillating in a narrow 4982–4998 range (purpose UNKNOWN — likely a per-DID ADC self-check reading; not a counter, not monotonic). `0x0ED2` and `0x0ED5` are all-zero on this pack |
 | `0x0960`, `0x0961`, `0x0905`, `0x0962`                 | UNKNOWN |

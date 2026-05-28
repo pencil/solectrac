@@ -478,6 +478,16 @@ class BmsState:
     shunt_state: bytes = b""       # 0x0E40 — Hall / Shunt current
     hall_current_a: Optional[float] = None     # bytes 0..1 BE i16 ÷ 10 A/bit
 
+    # Wake-source candidates (BMS-tab "On-board volt" sub-tab, TENTATIVE).
+    # 0x0F50 returns a single byte that's the leading WakeupSignal hypothesis
+    # (0x01 in KL15-woken sessions; OBC/RTC values not yet observed). The
+    # others sit alongside it in the same sub-tab and may be related rails
+    # or status — kept raw until a 2nd wake-source capture lands.
+    wake_source: Optional[int] = None   # 0x0F50 byte 0 (TENTATIVE WakeupSignal)
+    wake_block_f60: bytes = b""         # 0x0F60 — 3 bytes (07 00 80 observed)
+    wake_block_f10: bytes = b""         # 0x0F10 — 3 bytes (00 01 00 observed)
+    wake_block_f30: bytes = b""         # 0x0F30 — 4 bytes (toggles 00 0B 00 00 ↔ 00 00 00 00)
+
     # Cell health (Cell info tab)
     balance_a: bytes = b""         # 0x0EA0 — balancing
     balance_b: bytes = b""         # 0x0EA1 — balancing
@@ -559,6 +569,10 @@ class BmsState:
                 "hv_detect_pack_v": self.hv_detect_pack_v,
                 "shunt_state": self.shunt_state.hex(),
                 "hall_current_a": self.hall_current_a,
+                "wake_source": self.wake_source,
+                "wake_block_f60": self.wake_block_f60.hex(),
+                "wake_block_f10": self.wake_block_f10.hex(),
+                "wake_block_f30": self.wake_block_f30.hex(),
             },
             "cell_health": {
                 "balance_a": self.balance_a.hex(),
@@ -694,6 +708,13 @@ def decode_bmu_temps(data: bytes, st: BmsState):
         st.bmu_temps_c = []
 
 
+def decode_wake_source(data: bytes, st: BmsState):
+    # 0x0F50 — 1 byte. Leading WakeupSignal candidate. In every KL15-woken
+    # capture observed, returns `0x01`. OBC/RTC values not yet observed.
+    if data:
+        st.wake_source = data[0]
+
+
 def decode_shunt_state(data: bytes, st: BmsState):
     # 0x0E40 — 7 bytes. Bytes 0..1 BE i16 ÷ 10 = Hall current in A
     # (positive = drawing, negative = charging into pack). Scale fit
@@ -784,6 +805,11 @@ ALL_POLLS = [
     (0x1620, decode_bmu_temps),
     (0x0E00, decode_hv_detect),
     (0x0E40, decode_shunt_state),
+    # Wake-source candidates ("On-board volt" sub-tab) — TENTATIVE
+    (0x0F50, decode_wake_source),
+    (0x0F60, _store("wake_block_f60")),
+    (0x0F10, _store("wake_block_f10")),
+    (0x0F30, _store("wake_block_f30")),
     # Cell health
     (0x0EA0, _store("balance_a")),
     (0x0EA1, _store("balance_b")),
