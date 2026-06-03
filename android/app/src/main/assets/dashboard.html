@@ -224,8 +224,11 @@ function refresh(){
 // by MainActivity. We then receive pushed JSON via dispatchSolectracUpdate
 // (called from the BLE reassembler) instead of polling /json.
 window.dispatchSolectracUpdate=function(s){
-  try{update(JSON.parse(s));}
-  catch(e){document.getElementById('foot').textContent='Bad payload';}
+  var d;
+  try{d=JSON.parse(s);}
+  catch(e){document.getElementById('foot').textContent='Bad JSON: '+e.message;return;}
+  try{update(d);}
+  catch(e){document.getElementById('foot').textContent='Render error: '+e.message;}
 };
 if(window.SolectracBridge){
   document.getElementById('foot').textContent='Waiting for BLE…';
