@@ -35,11 +35,14 @@ Requires:
 """
 
 import argparse
+import json
 import sys
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Deque, List, Optional, Tuple
 
 try:
@@ -390,6 +393,9 @@ class State:
     chgr_v: Channel = field(default_factory=Channel)
     chgr_i: Channel = field(default_factory=Channel)
     chgr_status: Channel = field(default_factory=Channel)
+    # FF50CA byte 4 status-flags bitmap (bit 2 output_disabled, bit 3 line_ok,
+    # bit 4 no_line). Surfaced in the web JSON for the dashboard's AC pill.
+    chgr_flags: Channel = field(default_factory=Channel)
     # vehicle controller
     vc_state_raw: Channel = field(default_factory=Channel)
     # motor controller (FF21CA)
@@ -482,6 +488,9 @@ class State:
     decoded: int = 0
     errors: int = 0
     started_at: float = field(default_factory=time.monotonic)
+    # time.monotonic() of the most recent frame seen by decode(). Powers
+    # the dashboard's "last frame age" footer in --ui web.
+    last_frame_ts: Optional[float] = None
 
 
 # --- helpers ----------------------------------------------------------------
@@ -502,6 +511,7 @@ def primary_pack_v(state: State) -> Channel:
 def decode(msg: "can.Message", state: State, now: float) -> None:
     """Update state from a single CAN frame."""
     state.frames += 1
+    state.last_frame_ts = now
     if not getattr(msg, "is_extended_id", True):
         return
     try:
@@ -806,6 +816,7 @@ def decode(msg: "can.Message", state: State, now: float) -> None:
         status = data[0]
         flags = data[4]
         state.chgr_status.update(status, now)
+        state.chgr_flags.update(flags, now)
         # Mirror the F100F3 variant convention defensively: if status 0x02
         # is ever observed with a meaningful voltage, decode at the LO base.
         if status in (0x02, CHGR_STATUS_ACTIVE) and flags == 0x00:
@@ -1767,6 +1778,202 @@ def open_source(args):
     return can.Bus(**kwargs), "live"
 
 
+# --- web UI -----------------------------------------------------------------
+#
+# When run with --ui web, we expose the same `/` and `/json` endpoints the
+# firmware does, so the existing dashboard.html (the single source of truth,
+# in android/app/src/main/assets/) can render against replayed or live data.
+# state_to_json mirrors the firmware's buildJson(minimal=false) shape closely
+# enough that the dashboard reads the same fields.
+
+KMH_PER_RPM = (5.7 / 2800.0, 8.6 / 2800.0, 17.0 / 2800.0)
+MPH_PER_KMH = 0.6213712
+
+
+def _ch(c: Channel, ndigits: Optional[int] = None):
+    if c.value is None:
+        return None
+    return round(c.value, ndigits) if ndigits is not None else c.value
+
+
+def state_to_json(state: State, now: float, mode: str) -> dict:
+    """Snapshot in the same shape the firmware serves at /json."""
+    out: dict = {"uptime": now - state.started_at}
+
+    can_obj: dict = {
+        "state": "running" if state.frames > 0 else "stopped",
+        "frames_rx": state.frames,
+        "frames_decoded": state.decoded,
+    }
+    if state.last_frame_ts is not None:
+        can_obj["last_frame_age_s"] = round(now - state.last_frame_ts, 2)
+    out["can"] = can_obj
+
+    pack: dict = {}
+    pv = primary_pack_v(state).value
+    if pv is not None:
+        pack["voltage_v"] = round(pv, 2)
+    if state.pack_i_a.value is not None:
+        pack["current_a"] = round(state.pack_i_a.value, 1)
+    if state.pack_power_w.value is not None:
+        pack["power_w"] = round(state.pack_power_w.value, 1)
+    if state.bms_soc_pct.value is not None:
+        pack["soc_pct"] = round(state.bms_soc_pct.value, 1)
+
+    cells: dict = {}
+    if state.max_cell_mv.value is not None:
+        cells["max_mv"] = int(state.max_cell_mv.value)
+    if state.min_cell_mv.value is not None:
+        cells["min_mv"] = int(state.min_cell_mv.value)
+    if state.spread_mv.value is not None:
+        cells["spread_mv"] = int(state.spread_mv.value)
+    if state.max_cell_n.value is not None:
+        cells["max_n"] = int(state.max_cell_n.value)
+    if state.min_cell_n.value is not None:
+        cells["min_n"] = int(state.min_cell_n.value)
+    temp: dict = {}
+    if state.temp_max_c.value is not None:
+        temp["max_c"] = int(state.temp_max_c.value)
+    if state.temp_min_c.value is not None:
+        temp["min_c"] = int(state.temp_min_c.value)
+    if temp:
+        cells["temp_summary"] = temp
+    if cells:
+        pack["cells"] = cells
+    if pack:
+        out["pack"] = pack
+
+    # Session-cumulative energy + derived ETAs (mirrors buildJson session block).
+    sess: dict = {
+        "wh_drawn": round(state.energy_wh_drawn, 1),
+        "wh_charged": round(state.energy_wh_charged, 1),
+        "wh_net": round(state.energy_wh_drawn - state.energy_wh_charged, 1),
+        "wh_capacity": PACK_CAPACITY_WH,
+    }
+    if state.bms_soc_pct.value is not None:
+        remaining = state.bms_soc_pct.value * PACK_CAPACITY_WH / 100.0
+        sess["wh_remaining"] = round(remaining, 1)
+        eta_full = estimate_charge_eta_s(state)
+        eta_zero = estimate_drain_eta_s(state)
+        if eta_full and eta_full > 0:
+            sess["eta_to_full_s"] = int(eta_full)
+        if eta_zero and eta_zero > 0:
+            sess["eta_to_zero_s"] = int(eta_zero)
+    out["session"] = sess
+
+    # BMS state pills. Firmware names the b1 bit 6 channel "awake" (matches the
+    # dashboard label); stream.py's internal field is bms_contactors but the
+    # bit decoded is the same one (see decode() PGN_F106).
+    if state.bms_state_byte0.value is not None:
+        out["bms"] = {"state": {
+            "output_enable":  int(bool(state.bms_output_enable.value)),
+            "main_contactor": int(bool(state.bms_main_contactor.value)),
+            "operating":      int(bool(state.bms_operating.value)),
+            "standby":        int(bool(state.bms_standby.value)),
+            "charging":       int(bool(state.bms_charging.value)),
+            "charger_present": int(bool(state.bms_charger_present.value)),
+            "drive_mode":     int(bool(state.bms_drive_mode.value)),
+            "awake":          int(bool(state.bms_contactors.value)),
+        }}
+
+    bms_codes = [code for code, _ in active_bms_faults(state)]
+    mc_codes: list = []
+    if state.dm1_spn.value is not None and int(state.dm1_spn.value) != 0:
+        mc_codes.append(int(state.dm1_spn.value))
+    out["faults"] = {"bms": bms_codes, "mc": mc_codes}
+
+    if state.motor_rpm_mag.value is not None:
+        mot: dict = {"rpm_magnitude": int(state.motor_rpm_mag.value)}
+        if state.motor_direction.value is not None:
+            mot["direction"] = int(state.motor_direction.value)
+        if state.motor_range_gear.value is not None:
+            rg = int(state.motor_range_gear.value)
+            mot["range_gear"] = rg
+            if 1 <= rg <= 3:
+                kmh = state.motor_rpm_mag.value * KMH_PER_RPM[rg - 1]
+                mot["speed_kmh"] = round(kmh, 2)
+                mot["speed_mph"] = round(kmh * MPH_PER_KMH, 2)
+        if state.controller_temp_c.value is not None:
+            mot["controller_temp_c"] = int(state.controller_temp_c.value)
+        if state.motor_temp_c.value is not None:
+            mot["motor_temp_c"] = int(state.motor_temp_c.value)
+        out["motor"] = mot
+
+    if state.chgr_status.value is not None:
+        chg: dict = {}
+        if state.chgr_v.value is not None:
+            chg["voltage_v"] = round(state.chgr_v.value, 2)
+        if state.chgr_i.value is not None:
+            chg["current_a"] = round(state.chgr_i.value, 1)
+        flags = int(state.chgr_flags.value or 0)
+        chg["line_ok"] = 1 if flags & 0x08 else 0
+        chg["no_line"] = 1 if flags & 0x10 else 0
+        out["charger"] = chg
+
+    if (state.chgr_cmd_v_v.value is not None
+            or state.chgr_cmd_i_a.value is not None):
+        cmd: dict = {}
+        if state.chgr_cmd_v_v.value is not None:
+            cmd["voltage_v"] = round(state.chgr_cmd_v_v.value, 1)
+        if state.chgr_cmd_i_a.value is not None:
+            cmd["current_a"] = round(state.chgr_cmd_i_a.value, 1)
+        out["chgr_cmd"] = cmd
+
+    return out
+
+
+# Located by walking up from this script to the repo root. Single source of
+# truth: the Android app's WebView assets directory. The firmware symlinks its
+# embedded copy at embedded/esp32-s3/src/dashboard.html to this same file.
+DASHBOARD_HTML_PATH = (
+    Path(__file__).resolve().parent
+    / "android" / "app" / "src" / "main" / "assets" / "dashboard.html"
+)
+
+
+def serve_web(state: State, mode: str, host: str, port: int,
+              reader: threading.Thread, stop_evt: threading.Event) -> None:
+    """Block while serving /  and  /json until the reader exits or Ctrl-C."""
+    try:
+        html_bytes = DASHBOARD_HTML_PATH.read_bytes()
+    except OSError as e:
+        sys.stderr.write(f"failed to read {DASHBOARD_HTML_PATH}: {e}\n")
+        return
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):  # silence access log
+            pass
+
+        def _send(self, code: int, ctype: str, body: bytes) -> None:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path in ("/", "/index.html"):
+                self._send(200, "text/html; charset=utf-8", html_bytes)
+            elif self.path == "/json":
+                body = json.dumps(
+                    state_to_json(state, time.monotonic(), mode)
+                ).encode("utf-8")
+                self._send(200, "application/json", body)
+            else:
+                self.send_error(404)
+
+    httpd = ThreadingHTTPServer((host, port), Handler)
+    sys.stderr.write(f"Web UI listening on http://{host}:{port}/\n")
+    http_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    http_thread.start()
+    try:
+        while reader.is_alive() and not stop_evt.is_set():
+            reader.join(timeout=1.0)
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 # --- main -------------------------------------------------------------------
 
 def main() -> int:
@@ -1799,8 +2006,15 @@ def main() -> int:
                    help="for --replay, multiplier on realtime playback "
                         "(1.0 = recorded speed, 2.0 = 2x faster, "
                         "0.5 = half speed)")
-    p.add_argument("--no-tui", action="store_true",
-                   help="headless mode (just log, no display)")
+    p.add_argument("--ui", choices=("tui", "web", "none"), default="tui",
+                   help="UI mode: 'tui' (default) renders the rich terminal "
+                        "dashboard; 'web' serves the firmware's /  and  /json "
+                        "endpoints so the same dashboard.html can render against "
+                        "replayed or live data; 'none' is headless (decode only)")
+    p.add_argument("--web-host", default="0.0.0.0",
+                   help="bind address for --ui web (default 0.0.0.0)")
+    p.add_argument("--web-port", type=int, default=8080,
+                   help="bind port for --ui web (default 8080)")
     args = p.parse_args()
 
     if args.interface and not args.channel and args.interface != "virtual":
@@ -1861,7 +2075,10 @@ def main() -> int:
     reader.start()
 
     try:
-        if args.no_tui:
+        if args.ui == "web":
+            serve_web(state, mode, args.web_host, args.web_port,
+                      reader, stop_evt)
+        elif args.ui == "none":
             while reader.is_alive() and not stop_evt.is_set():
                 reader.join(timeout=1.0)
         else:
