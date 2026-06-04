@@ -381,14 +381,14 @@ correctly identifies the right cell.
 Smallest spread observed across all captures: 3 mV (124 frames in
 `recorded-data/charging.csv`).
 
-#### F100F3 — Pack status — CONFIRMED (voltage, current); TENTATIVE (SOC)
+#### F100F3 — Pack status — CONFIRMED (voltage, current, SOC)
 
 | Byte | data[]  | Meaning                                                     |
 |------|---------|-------------------------------------------------------------|
 | 1    | data[0] | **Voltage-range selector**: 0x03 = high range, 0x02 = low range (see below) |
 | 2    | data[1] | **Pack terminal voltage**: V = raw × 0.1 + (76.8 if data[0]=0x03 else 51.2) |
 | 3..4 | data[2..3] BE | **Signed pack current**: A = (be16 − 0x7D00) × 0.1    |
-| 5    | data[4] | **BMS-published SOC** (TENTATIVE; two-point fit at 80 %/90 %) |
+| 5    | data[4] | **BMS-published SOC**: % = raw × 0.4 − 0.8                  |
 | 6    | data[5] | 0xFA constant — **leading SOH candidate** (250 raw × 0.4 %/bit = 100 %) |
 | 7    | data[6] | 0x14 (= 20) — series cell count                             |
 | 8    | data[7] | 0x00 constant                                               |
@@ -454,16 +454,26 @@ crosses ~25.6 A, data[2] ticks to 0x7E and data[3] rolls back near
 zero, making the byte-only decode appear to "saturate" under load.
 Always read both bytes BE with the bias.
 
-**SOC (data[4])** is TENTATIVE. Streamer fit:
+**SOC (data[4])** — CONFIRMED. Fit:
 
     SOC % = data[4] × 0.4 − 0.8
 
-calibrated against three direct dashboard-screen readings: raw 177 at
-70 %, raw 202 at 80 %, and raw 227 at 90 %. Slope = 10/25 = 0.4,
-intercept = −0.8; all three points are exactly collinear. Raw
-saturates at 250 (= 99.2 %) in `soc-100-idle.asc`. Calibration still
-sits in the top ~30 % of the range; linearity below 70 % wants a
-deeper-discharge capture.
+Slope 10/25 = 0.4, intercept −0.8; four dashboard-screen anchors are
+exactly collinear:
+
+| Dashboard | raw | Fit predicts |
+|-----------|-----|--------------|
+| 40 %      | 102 | 40.0 %       |
+| 70 %      | 177 | 70.0 %       |
+| 80 %      | 202 | 80.0 %       |
+| 90 %      | 227 | 90.0 %       |
+
+Raw saturates at 250 (= 99.2 %) at full charge. The 40 % anchor is
+independently cross-validated by integrating pack power through a
+13-minute heavy-load drive: raw fell 120 → 106 (5.6 % by fit) while
+∫V·I yielded 1180.6 Wh = 5.46 % of the 21.6 kWh nameplate — the SOC
+byte and the integrated energy agree within 0.14 % across a real
+drive cycle, self-consistent at the 40 %–47 % working range.
 
 **SOH candidate (data[5])** TENTATIVE. data[5] is 0xFA = 250 across
 every capture (42 captures, all BMS frames swept by
@@ -553,23 +563,26 @@ contactor-diagnostic theories are ruled out: a static limit would not
 tick-by-tick track instantaneous V_pack, and contactor state is discrete rather
 than admitting a near-perfect functional dependence.
 
-The mapping is not a single linear curve, however. Three observed bands:
+The mapping is not a single linear curve, however. Four observed bands:
 
-| b5 range  | V_pack         | Regime                           |
-|-----------|----------------|----------------------------------|
-| 0x5A–0x61 | 76.9–78.5 V    | Heavy-load sag                   |
-| 0x6F–0x77 | 81.6–83.3 V    | Sustained drive                  |
-| 0x56–0x59 | 101.7–102.2 V  | Idle / pre-current-draw          |
+| b5 range  | V_pack         | Regime                                  |
+|-----------|----------------|-----------------------------------------|
+| 0x42–0x48 | 71.6–72.8 V    | Low-SOC sustained drive (variant 0x02)  |
+| 0x5A–0x61 | 76.9–78.5 V    | Heavy-load sag                          |
+| 0x6F–0x77 | 81.6–83.3 V    | Sustained drive                         |
+| 0x56–0x59 | 101.7–102.2 V  | Idle / pre-current-draw                 |
 
-The two driving bands share roughly the same ~0.22 V/bit slope but different
-intercepts; the high-voltage idle band has a similar slope and a third
-intercept. A single linear formula `V_pack ≈ b5 × 0.2212 + 57.01` fits only
-the 0x6F–0x77 band; pooled across all driving samples its R² collapses to
-0.04. The values 0x4A and 0x4D, previously listed as init/teardown
-transients, actually slot into the heavy-load band at plausible V_pack and
-are not anomalous. The encoding scheme that produces the banded behaviour
-isn't pinned down. Not surfaced as a separate channel — the full-precision
-pack voltage is already on `state.pack_v`.
+All four bands share a ~0.2 V/bit slope but each has its own intercept. A
+single linear formula `V_pack ≈ b5 × 0.2212 + 57.01` fits only the 0x6F–0x77
+band; pooled across all driving samples its R² collapses to 0.04. The
+0x42–0x48 band is the first observation in the low-voltage variant
+(F100F3 data[0]=0x02) regime and reinforces the banded picture with a fourth
+distinct intercept rather than closing in on a single curve. The values 0x4A
+and 0x4D, previously listed as init/teardown transients, actually slot into
+the heavy-load band at plausible V_pack and are not anomalous. The encoding
+scheme that produces the banded behaviour isn't pinned down. Not surfaced as
+a separate channel — the full-precision pack voltage is already on
+`state.pack_v`.
 
 #### F108F3 — BMS active fault bitmap — CONFIRMED via injection
 
