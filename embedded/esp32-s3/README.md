@@ -4,29 +4,36 @@ Firmware that reads J1939 CAN frames from a Solectrac e25G electric tractor and
 exposes the decoded state in four different ways:
 
 - A mobile-friendly HTML dashboard over WiFi
-- A JSON endpoint for scripting / scraping
+- A JSON endpoint for scripting
+- BLE JSON output
 - Raw CAN frames over USB (SLCAN)
 - Raw CAN frames over WiFi (socketcand)
 
-## Hardware
+## Supported hardware
 
-| Component | Notes |
-|---|---|
-| Microcontroller board | Adafruit ESP32-S3 Reverse TFT Feather |
-| CAN transceiver | Adafruit CAN Pal |
-| Bus speed | 250 kbit/s, J1939 (29-bit extended frames) |
+The firmware builds for two ESP32-S3 boards. Pick the one you have; both speak
+the same J1939 bus at 250 kbit/s (29-bit extended frames).
 
-Pin connections expected by the firmware (in `src/main.cpp`):
+| Board | PlatformIO env | CAN TX | CAN RX | Status LED |
+|---|---|---|---|---|
+| Adafruit ESP32-S3 Reverse TFT Feather + CAN Pal | `adafruit_feather_s3` | GPIO 8 (A5) | GPIO 14 (A4) | NeoPixel on GPIO 33 (power-gated by GPIO 21) |
+| LilyGo T-2CAN (CAN B / native TWAI) | `lilygo_t2can` | GPIO 7 | GPIO 6 | none |
 
-| Function | GPIO | Notes |
-|---|---|---|
-| CAN TX → transceiver TX | GPIO 8 (A5) | `CAN_TX_PIN` |
-| CAN RX ← transceiver RX | GPIO 14 (A4) | `CAN_RX_PIN` |
-| Status RGB NeoPixel | GPIO 33 | gated by GPIO 21 (NeoPixel power) |
+Notes:
 
-The Reverse TFT display on the board is not used by this firmware.
+- On the **Adafruit Feather**, the Reverse TFT display is not used.
+- On the **LilyGo T-2CAN**, use the **CAN B** header (the native ESP32-S3 TWAI
+  controller). The board's second CAN port (MCP2518FD on SPI) is unused. The
+  transceiver is galvanically isolated, so when wiring to a separate analyzer
+  you must also connect DGND between the two — without it the bus floats and
+  no frames arrive.
+- The pin map lives in `src/main.cpp` under `BOARD_ADAFRUIT_FEATHER_S3` /
+  `BOARD_LILYGO_T2CAN`. Build environments are defined in `platformio.ini`.
 
 ## What the LED tells you
+
+Adafruit Feather only — the LilyGo T-2CAN has no user LED, so these calls are
+no-ops on that board.
 
 | Pattern | Meaning |
 |---|---|
@@ -47,7 +54,7 @@ The Reverse TFT display on the board is not used by this firmware.
 
    ```bash
    git clone <repo-url>
-   cd solectrac/esp32
+   cd solectrac/embedded/esp32-s3
    ```
 
 3. **Set WiFi credentials** as environment variables — the build embeds them
@@ -66,10 +73,14 @@ The Reverse TFT display on the board is not used by this firmware.
 
 ## Common commands
 
+Pass `-e <env>` to target a specific board. Without it, PlatformIO builds every
+environment in `platformio.ini`.
+
 | Command | What it does |
 |---|---|
-| `pio run` | Build firmware only |
-| `pio run -t upload` | Build and flash to the connected board |
+| `pio run -e adafruit_feather_s3` | Build firmware for the Adafruit Feather |
+| `pio run -e lilygo_t2can` | Build firmware for the LilyGo T-2CAN |
+| `pio run -e <env> -t upload` | Build and flash to the connected board |
 | `pio device monitor -b 115200` | Open USB serial console (also speaks SLCAN — see below) |
 | `pio run -t clean` | Wipe build cache (useful if PIO ever gets confused) |
 
@@ -115,8 +126,9 @@ drops the first.
 ## Source layout
 
 ```
-esp32/
-├── platformio.ini          # board + build configuration
+esp32-s3/
+├── platformio.ini          # board envs + build configuration
+├── boards/                 # custom board JSONs (LilyGo T-2CAN)
 ├── README.md               # this file
 └── src/
     ├── main.cpp            # all firmware code (decode, HTTP, SLCAN, socketcand, LED)
