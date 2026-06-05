@@ -35,7 +35,9 @@ Requires:
 """
 
 import argparse
+import asyncio
 import json
+import struct
 import sys
 import threading
 import time
@@ -1974,6 +1976,99 @@ def serve_web(state: State, mode: str, host: str, port: int,
         httpd.server_close()
 
 
+# --- BLE peripheral ---------------------------------------------------------
+#
+# When run with --ui ble, we impersonate the firmware's Nordic UART Service
+# peripheral so the Android app (which scans by service UUID, not name) can
+# connect to the laptop instead of the tractor. Same UUIDs, same on-wire
+# framing as embedded/esp32-s3/src/main.cpp:925-1010:
+#
+#     [u16 big-endian length] [length bytes of JSON]
+#
+# split across N notifications of up to BLE_CHUNK_BYTES each. The Android
+# client reassembles by counting bytes against the length prefix
+# (BleClient.kt:226). Reuses state_to_json() — Android renders the dashboard
+# from the same shape it receives over HTTP, so a single JSON producer
+# serves both transports.
+
+NUS_SVC_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+NUS_TX_UUID  = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+NUS_RX_UUID  = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
+
+BLE_CHUNK_BYTES = 180
+BLE_PUSH_INTERVAL_S = 0.2          # diff cadence (matches firmware's 200 ms)
+BLE_INTER_CHUNK_DELAY_S = 0.005    # 5 ms between chunks
+
+
+async def _ble_run(state: State, mode: str,
+                   reader: threading.Thread,
+                   stop_evt: threading.Event) -> None:
+    try:
+        from bless import (
+            BlessServer,
+            GATTAttributePermissions,
+            GATTCharacteristicProperties,
+        )
+    except ImportError as e:
+        sys.stderr.write(
+            f"failed to import `bless` for --ui ble: {e}\n"
+            "If bless is installed but its bleak dependency is too new "
+            "(>=1.0), pin `bleak<1` and re-sync.\n")
+        return
+
+    server = BlessServer(name="solectrac")
+    # Writes to RX are accepted and silently discarded (firmware does the same).
+    server.read_request_func = lambda ch, **_: ch.value
+    server.write_request_func = lambda ch, value, **_: None
+
+    await server.add_new_service(NUS_SVC_UUID)
+    # CoreBluetooth rejects non-nil initial values on anything that isn't
+    # strictly read-only, so pass None for both notify and write chars.
+    await server.add_new_characteristic(
+        NUS_SVC_UUID, NUS_TX_UUID,
+        GATTCharacteristicProperties.notify,
+        None,
+        GATTAttributePermissions.readable,
+    )
+    await server.add_new_characteristic(
+        NUS_SVC_UUID, NUS_RX_UUID,
+        (GATTCharacteristicProperties.write
+         | GATTCharacteristicProperties.write_without_response),
+        None,
+        GATTAttributePermissions.writeable,
+    )
+    await server.start()
+    sys.stderr.write(
+        f"BLE peripheral advertising NUS {NUS_SVC_UUID}; "
+        "open the Android app and Scan.\n")
+
+    last_payload = b""
+    try:
+        while reader.is_alive() and not stop_evt.is_set():
+            payload = json.dumps(
+                state_to_json(state, time.monotonic(), mode)
+            ).encode("utf-8")
+            if payload and payload != last_payload and len(payload) <= 0xFFFF:
+                frame = struct.pack(">H", len(payload)) + payload
+                tx_char = server.get_characteristic(NUS_TX_UUID)
+                for off in range(0, len(frame), BLE_CHUNK_BYTES):
+                    tx_char.value = bytearray(frame[off:off + BLE_CHUNK_BYTES])
+                    server.update_value(NUS_SVC_UUID, NUS_TX_UUID)
+                    await asyncio.sleep(BLE_INTER_CHUNK_DELAY_S)
+                last_payload = payload
+            await asyncio.sleep(BLE_PUSH_INTERVAL_S)
+    finally:
+        await server.stop()
+
+
+def serve_ble(state: State, mode: str,
+              reader: threading.Thread, stop_evt: threading.Event) -> None:
+    try:
+        asyncio.run(_ble_run(state, mode, reader, stop_evt))
+    except KeyboardInterrupt:
+        pass
+
+
 # --- main -------------------------------------------------------------------
 
 def main() -> int:
@@ -2006,11 +2101,13 @@ def main() -> int:
                    help="for --replay, multiplier on realtime playback "
                         "(1.0 = recorded speed, 2.0 = 2x faster, "
                         "0.5 = half speed)")
-    p.add_argument("--ui", choices=("tui", "web", "none"), default="tui",
+    p.add_argument("--ui", choices=("tui", "web", "ble", "none"), default="tui",
                    help="UI mode: 'tui' (default) renders the rich terminal "
                         "dashboard; 'web' serves the firmware's /  and  /json "
                         "endpoints so the same dashboard.html can render against "
-                        "replayed or live data; 'none' is headless (decode only)")
+                        "replayed or live data; 'ble' impersonates the firmware's "
+                        "Nordic UART peripheral so the Android app can connect to "
+                        "the laptop; 'none' is headless (decode only)")
     p.add_argument("--web-host", default="0.0.0.0",
                    help="bind address for --ui web (default 0.0.0.0)")
     p.add_argument("--web-port", type=int, default=8080,
@@ -2078,6 +2175,8 @@ def main() -> int:
         if args.ui == "web":
             serve_web(state, mode, args.web_host, args.web_port,
                       reader, stop_evt)
+        elif args.ui == "ble":
+            serve_ble(state, mode, reader, stop_evt)
         elif args.ui == "none":
             while reader.is_alive() and not stop_evt.is_set():
                 reader.join(timeout=1.0)
