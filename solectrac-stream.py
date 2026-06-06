@@ -64,31 +64,25 @@ except ImportError:
     print("rich is required: pip install rich", file=sys.stderr)
     sys.exit(1)
 
+from solectrac_proto import (
+    SRC_BMS, SRC_BMS_CHGR_IF, SRC_CHARGER, SRC_VEHICLE, SRC_MOTOR, SRC_DASH,
+    PGN_CELL_FIRST, PGN_CELL_LAST, PGN_TEMP_FIRST, PGN_TEMP_LAST,
+    PGN_F100, PGN_F102, PGN_F104, PGN_F106, PGN_F107, PGN_F108,
+    PGN_FF50, PGN_FF21, PGN_FECA, PGN_PROP_0600,
+    DM1_LAMP_NAMES, VC_STATE_NAMES,
+    NUM_CELLS, NUM_TEMPS, TEMP_OFFSET_C,
+    PACK_CAPACITY_AH, PACK_NOMINAL_V, PACK_CAPACITY_WH,
+    PACK_CURRENT_LSB_A, PACK_CURRENT_BIAS_RAW,
+    PACK_VOLTAGE_LSB_V, PACK_VOLTAGE_OFFSET_HI_V, PACK_VOLTAGE_OFFSET_LO_V,
+    CHARGER_V_LSB_V, CHARGER_V_OFFSET_V, CHARGER_I_LSB_A,
+    RPM_BIAS, LIMIT_CURRENT_LSB_A,
+    BMS_FAULT_CODES_BYTE7, BMS_FAULT_CODES_BYTES_0_TO_6,
+    parse_id, be16, le16, c_to_f,
+)
 
-# --- protocol constants (mirrored from solectrac-analyze.py) --------------
 
-SRC_BMS = 0xF3
-SRC_BMS_CHGR_IF = 0xF4   # BMS in its charger-interface role; SA only sends 0x000600
-SRC_CHARGER = 0xE5
-SRC_VEHICLE = 0xD0
-SRC_MOTOR = 0xCA
-SRC_DASH = 0x12          # dashboard / instrument-cluster heartbeat; only sends FF21
+# --- script-local protocol tables -----------------------------------------
 
-PGN_CELL_FIRST, PGN_CELL_LAST = 0xF113, 0xF13C
-PGN_TEMP_FIRST, PGN_TEMP_LAST = 0xF155, 0xF15E
-PGN_F100 = 0xF100
-PGN_F102 = 0xF102
-PGN_F104 = 0xF104
-PGN_F106 = 0xF106
-PGN_F107 = 0xF107
-PGN_F108 = 0xF108
-PGN_FF50 = 0xFF50
-PGN_FF21 = 0xFF21
-PGN_FECA = 0xFECA   # SAE J1939-73 DM1 (Active Diagnostic Trouble Codes)
-PGN_PROP_0600 = 0x0600   # PDU1, src 0xF4 -> dest 0xE5: BMS charger setpoint
-
-# DM1 lamp/flash 2-bit field decode tables (per J1939-73).
-DM1_LAMP_NAMES = ("malfunction", "red_stop", "amber_warning", "protect")
 DM1_LAMP_STATE = {0: "off", 1: "on", 2: "rsv", 3: "n/a"}
 DM1_FLASH_STATE = {0: "-", 1: "1Hz", 2: "2Hz", 3: "n/a"}
 # Standard J1939-73 Appendix A FMIs (most common; full list is 0..31).
@@ -204,50 +198,6 @@ def describe_mc_code(code: int) -> str:
 #
 # Descriptions are looked up from BMS_FAULT_DESCRIPTIONS at render time
 # so the operator-manual text remains the single source of truth.
-BMS_FAULT_CODES_BYTE7: List[Tuple[int, int]] = [
-    (0, 140),
-    # bit 1: silent on dashboard
-    # bit 2: silent on dashboard
-    (3, 142),
-    (4, 143),
-    (5, 144),
-    (6, 144),  # duplicate of bit 5 (re-verified by injection)
-    (7, 145),
-]
-
-# F108 bytes 0..6: per-bit code table. Indexed by (byte, bit); None means
-# the bit is silent on the dashboard. Layout uses MIXED encoding:
-# bytes 0..3 are 2 bits per code (each pair of adjacent bits displays the
-# same code), bytes 4..5 are 1 bit per code, byte 6 is fully silent. The
-# manual's reserved codes (114, 115) take zero bits — bits 4..7 of byte 3
-# are silent. Codes 120..123 live in byte 4 bits 4..7 (1 bit each).
-#
-# Confirmed end-to-end by injection sweep on 2026-05-10.
-BMS_FAULT_CODES_BYTES_0_TO_6: dict = {
-    0: (100, 100, 101, 101, 102, 102, 103, 103),
-    1: (104, 104, 105, 105, 106, 106, 107, 107),
-    2: (108, 108, 109, 109, 110, 110, 111, 111),
-    3: (112, 112, 113, 113, None, None, None, None),  # 114, 115 reserved
-    4: (116, 117, 118, 119, 120, 121, 122, 123),
-    5: (124, 125, 126, 127, None, None, None, None),
-    # byte 6: all 8 bits silent
-}
-
-TEMP_OFFSET_C = 40
-
-
-def c_to_f(c: float) -> float:
-    return c * 9 / 5 + 32
-PACK_CURRENT_LSB_A = 0.1
-PACK_CURRENT_BIAS_RAW = 0x7D00  # F100F3 bytes 2-3 BE, biased so 0x7D00 = 0 A
-PACK_VOLTAGE_LSB_V = 0.1        # F100F3 byte 1 and FF50E5 bytes 1-2 LE
-PACK_VOLTAGE_OFFSET_HI_V = 76.8 # F100F3 variant 0x03 / FF50 charger (high range, 76.8–102.3 V)
-PACK_VOLTAGE_OFFSET_LO_V = 51.2 # F100F3 variant 0x02 (low range, 51.2–76.7 V); variant byte acts as 9th MSB on data[1]
-CHARGER_V_LSB_V = PACK_VOLTAGE_LSB_V       # charger uses identical encoding
-CHARGER_V_OFFSET_V = PACK_VOLTAGE_OFFSET_HI_V
-CHARGER_I_LSB_A = 0.1
-RPM_BIAS = 0x0C80
-LIMIT_CURRENT_LSB_A = 0.01     # F107 bytes 0-1 / 2-3 BE, 0.01 A/bit
 # Throttle pedal scaling for FF21CA byte 0. Raw 0..0xFF; the byte is a
 # raw ADC-style reading, not the J1939 SPN 91 0.4 %/bit encoding the
 # earlier hypothesis assumed. Maxima observed in the corpus:
@@ -278,18 +228,6 @@ KMH_PER_RPM_TURF = {
     3: 17.0 / 2800,   # High (range gear "H")
 }
 KMH_TO_MPH = 0.6213712
-# Pack ratings: the vendor BMS GUI reports 300 Ah at 72.0 V nominal
-# (21.6 kWh). The FT 25G service manual battery section nameplates the
-# pack at 350 Ah / 73 V / 25.5 kWh (20S4P NMC modules, cell
-# SEPNI-8688190P-17.5AH-5P). The GUI value is likely a derated/usable
-# capacity; we keep the GUI numbers here for back-compat with prior
-# SOC->Wh calculations. Used for the "% of pack" display only; not
-# used for any decoding.
-PACK_CAPACITY_AH = 300.0
-PACK_NOMINAL_V = 72.0
-PACK_CAPACITY_WH = PACK_CAPACITY_AH * PACK_NOMINAL_V    # 21,600 Wh
-
-VC_STATE_NAMES = {0x00: "init", 0x0C: "ready"}
 
 # Charger status byte (FF50CA byte 0). Values established empirically:
 #   0x00 = idle (charger module powered, not charging)
@@ -298,10 +236,6 @@ VC_STATE_NAMES = {0x00: "init", 0x0C: "ready"}
 CHGR_STATUS_IDLE = 0x00
 CHGR_STATUS_ACTIVE = 0x03
 CHGR_HANDSHAKE_STATES = {0x01, 0x02}
-
-# Pack topology from the vendor BMS GUI screenshot (see NOTES.txt).
-NUM_CELLS = 20
-NUM_TEMPS = 7
 
 STALE_S = 2.0  # mark a channel stale if no update for this long
 
@@ -327,23 +261,6 @@ SOC_ETA_STABLE_TRANSITIONS = 3      # transitions before dropping "(rough)"
 # arrives at ~10 Hz so 60 s gives ~600 samples; bucketing averages them.
 POWER_HISTORY_S = 60.0
 POWER_SPARK_WIDTH = 30
-
-
-def parse_id(can_id: int) -> Tuple[int, int]:
-    """Return (pgn, source) from a 29-bit J1939 ID."""
-    src = can_id & 0xFF
-    pf = (can_id >> 16) & 0xFF
-    ps = (can_id >> 8) & 0xFF
-    pgn = (pf << 8) | (ps if pf >= 0xF0 else 0)
-    return pgn, src
-
-
-def be16(hi: int, lo: int) -> int:
-    return (hi << 8) | lo
-
-
-def le16(lo: int, hi: int) -> int:
-    return (hi << 8) | lo
 
 
 # --- state store ------------------------------------------------------------
@@ -517,7 +434,7 @@ def decode(msg: "can.Message", state: State, now: float) -> None:
     if not getattr(msg, "is_extended_id", True):
         return
     try:
-        pgn, src = parse_id(msg.arbitration_id)
+        _, pgn, src = parse_id(msg.arbitration_id)
     except Exception:
         state.errors += 1
         return

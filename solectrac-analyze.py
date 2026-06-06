@@ -306,52 +306,24 @@ except ImportError:
     print("python-can is required: pip install python-can", file=sys.stderr)
     sys.exit(1)
 
-# --- bus map -----------------------------------------------------------------
-SRC_BMS = 0xF3
-SRC_BMS_CHGR_IF = 0xF4   # BMS in its charger-interface role; only sender of
-                         # PGN 0x000600 to 0xE5 (proprietary charger commands)
-SRC_CHARGER = 0xE5
-SRC_VEHICLE = 0xD0   # vehicle controller; broadcasts a minimal F100 heartbeat
-SRC_MOTOR = 0xCA     # motor controller / drive ECU; FF21 telemetry, DM1 source
-SRC_DASH = 0x12      # dashboard / instrument-cluster heartbeat; only sends FF21
+from solectrac_proto import (
+    SRC_BMS, SRC_BMS_CHGR_IF, SRC_CHARGER, SRC_VEHICLE, SRC_MOTOR, SRC_DASH,
+    PGN_CELL_FIRST, PGN_CELL_LAST, PGN_TEMP_FIRST, PGN_TEMP_LAST,
+    PGN_F100, PGN_F102, PGN_F104, PGN_F106, PGN_F107, PGN_F108,
+    PGN_FF50, PGN_FF21, PGN_FECA, PGN_PROP_0600,
+    DM1_LAMP_NAMES, VC_STATE_NAMES,
+    NUM_CELLS, NUM_TEMPS, TEMP_OFFSET_C,
+    PACK_CAPACITY_AH, PACK_NOMINAL_V, PACK_CAPACITY_WH,
+    PACK_CURRENT_LSB_A, PACK_CURRENT_BIAS_RAW,
+    PACK_VOLTAGE_LSB_V, PACK_VOLTAGE_OFFSET_HI_V, PACK_VOLTAGE_OFFSET_LO_V,
+    CHARGER_V_LSB_V, CHARGER_V_OFFSET_V, CHARGER_I_LSB_A,
+    RPM_BIAS, LIMIT_CURRENT_LSB_A,
+    BMS_FAULT_CODES_BYTE7, BMS_FAULT_CODES_BYTES_0_TO_6,
+    parse_id, be16, le16, data_bytes, c_to_f,
+)
 
-# Decoded names for the byte-0 state field of 18F100D0 (used only by stdout
-# diagnostics; the numeric byte is what lands in signals.csv). Only these
-# two values are observed across 22,338 F100D0 frames in 30 captures (0x00
-# in 19 frames -- 0.08% -- and 0x0C in the other 22,319). The 0x00 frames
-# all occur in ignition-without-charger-inserted.asc as a brief leading-edge
-# burst (~365 ms cluster) ~0.5-1 s *before* the BMS F106 byte-1 state byte
-# transitions between drive_mode and charger_present. Bytes 1..7 of F100D0
-# are always 0xFF (the J1939 "not available" sentinel).
-VC_STATE_NAMES = {
-    0x00: "init",     # transient transition state (precedes BMS mode change)
-    0x0C: "ready",    # nominal steady state
-}
 
-# Cell-voltage and temperature PGN windows (BMS broadcasts).
-PGN_CELL_FIRST, PGN_CELL_LAST = 0xF113, 0xF13C
-PGN_TEMP_FIRST, PGN_TEMP_LAST = 0xF155, 0xF15E
-
-# Aggregate / status PGNs from BMS.
-PGN_F100 = 0xF100   # pack status (bytes 2-3 BE = signed pack current)
-PGN_F102 = 0xF102   # cell min/max summary
-PGN_F104 = 0xF104   # temp min/max summary (symmetric with F102)
-PGN_F106 = 0xF106   # BMS state / mode (bytes 0,1 = bitmap)
-PGN_F107 = 0xF107   # BMS current limits (charge/discharge)
-PGN_F108 = 0xF108   # BMS active fault bitmap (byte 7 = dashboard codes)
-
-# Charger broadcast.
-PGN_FF50 = 0xFF50   # charger telemetry (V, A)
-
-# Motor controller broadcast.
-PGN_FF21 = 0xFF21   # motor telemetry (RPM, throttle, drive-state, ctrl temp)
-
-# Standard SAE J1939-73 diagnostic message (Active DTCs).
-PGN_FECA = 0xFECA   # DM1 (Active Diagnostic Trouble Codes)
-
-# Vendor proprietary BMS->charger command channel.
-PGN_PROP_0600 = 0x0600   # PDU1, src 0xF4 -> dest 0xE5: charger setpoints
-                         # (V/I requests + enable flag)
+# --- script-local protocol tables -------------------------------------------
 
 # DM1 lamp-status enum per J1939-73 (2 bits per lamp, same encoding for byte 0
 # "lamp on/off" and byte 1 "flash status"):
@@ -359,97 +331,8 @@ PGN_PROP_0600 = 0x0600   # PDU1, src 0xF4 -> dest 0xE5: charger setpoints
 #   0b01 = on  / slow flash (1 Hz)
 #   0b10 = reserved / fast flash (2 Hz)
 #   0b11 = not available
-DM1_LAMP_NAMES = ("malfunction", "red_stop", "amber_warning", "protect")
 DM1_LAMP_STATE = {0: "off", 1: "on", 2: "reserved", 3: "n/a"}
 DM1_FLASH_STATE = {0: "no_flash", 1: "slow_1hz", 2: "fast_2hz", 3: "n/a"}
-
-TEMP_OFFSET_C = 40
-
-# Pack topology from the vendor BMS GUI screenshot (see NOTES.txt). Cell /
-# temp PGN ranges have room for many more channels but only the first
-# NUM_CELLS / NUM_TEMPS slots are real on this pack; the rest are padding
-# / "not present" sentinels.
-NUM_CELLS = 20
-NUM_TEMPS = 7
-
-# Pack ratings: the vendor BMS GUI reports 300 Ah at 72.0 V nominal
-# (21.6 kWh). The FT 25G service manual battery section nameplates the
-# pack at 350 Ah / 73 V / 25.5 kWh (20S4P NMC modules, cell
-# SEPNI-8688190P-17.5AH-5P). The GUI value is likely a derated/usable
-# capacity; we keep the GUI numbers here for back-compat with prior
-# SOC->Wh calculations. The kWh display is a derived heuristic, not a
-# decoded CAN signal -- not used for any decoding.
-PACK_CAPACITY_AH = 300.0
-PACK_NOMINAL_V = 72.0
-PACK_CAPACITY_WH = PACK_CAPACITY_AH * PACK_NOMINAL_V    # 21,600 Wh
-
-# F108 byte 7: 1 bit per dashboard-displayed BMS warning code. Bit -> code.
-# Mapping established by per-bit injection (solectrac-inject-f108.py) on
-# 2026-05-10 and recorded in f108-byte7.csv: bit 0 = 140, bits 1,2 silent
-# (dashboard shows nothing), bit 3 = 142, bit 4 = 143, bit 5 = 144,
-# bit 6 = 144 (duplicate of bit 5, re-verified), bit 7 = 145. Code 146
-# does NOT appear anywhere in F108; the operator's "146" in the
-# bms-124-140-142-143-144-146.asc cycling capture was almost certainly
-# a transcription of 145.
-BMS_FAULT_CODES_BYTE7 = [
-    (0, 140),
-    # bit 1: silent on dashboard
-    # bit 2: silent on dashboard
-    (3, 142),
-    (4, 143),
-    (5, 144),
-    (6, 144),  # duplicate of bit 5 (confirmed by re-injection)
-    (7, 145),
-]
-
-# F108 bytes 0..6: per-bit code table. Indexed by (byte, bit); None means
-# the bit is silent on the dashboard. Layout uses MIXED encoding:
-# bytes 0..3 are 2 bits per code (each pair of adjacent bits displays the
-# same code), bytes 4..5 are 1 bit per code, byte 6 is fully silent. The
-# manual's reserved codes (114, 115) take zero bits — bits 4..7 of byte 3
-# are silent. Codes 120..123 live in byte 4 bits 4..7 (1 bit each), not
-# in byte 5 as a per-byte sequential formula would predict.
-#
-# Confirmed end-to-end by injection sweep on 2026-05-10 across all 56
-# bits of bytes 0..6 (f108-mapping.csv, f108-bytes1to5.csv,
-# f108-bytes3to5.csv, f108-byte6.csv).
-BMS_FAULT_CODES_BYTES_0_TO_6 = {
-    0: (100, 100, 101, 101, 102, 102, 103, 103),
-    1: (104, 104, 105, 105, 106, 106, 107, 107),
-    2: (108, 108, 109, 109, 110, 110, 111, 111),
-    3: (112, 112, 113, 113, None, None, None, None),  # 114, 115 reserved
-    4: (116, 117, 118, 119, 120, 121, 122, 123),
-    5: (124, 125, 126, 127, None, None, None, None),
-    # byte 6: all 8 bits silent
-}
-
-PACK_CURRENT_LSB_A = 0.1                  # F100F3 bytes 3-4 BE, 0.1 A/bit
-PACK_CURRENT_BIAS_RAW = 0x7D00            # raw value at 0 A (positive = discharge)
-PACK_VOLTAGE_LSB_V = 0.1                  # F100F3 byte 2 and FF50E5 bytes 2-3 LE
-PACK_VOLTAGE_OFFSET_HI_V = 76.8           # F100F3 variant 0x03 / FF50 charger (high range, 76.8–102.3 V)
-PACK_VOLTAGE_OFFSET_LO_V = 51.2           # F100F3 variant 0x02 (low range, 51.2–76.7 V); variant byte acts as 9th MSB on data[1]
-CHARGER_V_LSB_V = PACK_VOLTAGE_LSB_V      # charger reports the same encoding
-CHARGER_V_OFFSET_V = PACK_VOLTAGE_OFFSET_HI_V
-CHARGER_I_LSB_A = 0.1
-RPM_BIAS = 0x0C80                         # FF21CA bytes 2-3 LE zero-RPM offset
-LIMIT_CURRENT_LSB_A = 0.01                # F107F3 bytes 0-1 / 2-3 BE, 0.01 A/bit
-
-
-def c_to_f(c):
-    """Celsius -> Fahrenheit (used only by the stdout summary)."""
-    return None if c is None else round(c * 9 / 5 + 32, 1)
-
-
-# --- helpers -----------------------------------------------------------------
-
-def parse_id(can_id: int):
-    """Return (priority, pgn, source) from a 29-bit J1939 ID."""
-    src = can_id & 0xFF
-    pf = (can_id >> 16) & 0xFF
-    ps = (can_id >> 8) & 0xFF
-    pgn = (pf << 8) | (ps if pf >= 0xF0 else 0)   # PDU2 vs PDU1
-    priority = (can_id >> 26) & 0x7
-    return priority, pgn, src
 
 
 # Known PGN descriptions (SAE-defined plus what we've identified locally).
@@ -528,22 +411,6 @@ def decode_can_id(can_id: int, is_extended: bool) -> dict:
         "ps_role": "GE" if pdu2 else "DA",
         "name": describe_pgn(pgn),
     }
-
-
-def data_bytes(msg_data) -> list:
-    """Return 8 ints, padding with 0 for short payloads."""
-    out = list(msg_data)
-    while len(out) < 8:
-        out.append(0)
-    return out[:8]
-
-
-def be16(hi, lo):
-    return (hi << 8) | lo
-
-
-def le16(lo, hi):
-    return (hi << 8) | lo
 
 
 # --- per-frame decoders ------------------------------------------------------
