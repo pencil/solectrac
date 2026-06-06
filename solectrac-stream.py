@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-solectrac-stream.py — Live (or replayed) BMS / charger TUI for the
+solectrac-stream.py — Live (or replayed) CAN UI for the
 Solectrac CAN bus.
 
 Decodes the same J1939-style frames as solectrac-analyze.py, but
@@ -29,9 +29,6 @@ Examples:
     # Live + raw logging + AC-budget alerts for a 120V/20A circuit
     solectrac-stream.py --interface socketcan --channel can0 \\
         --raw-log out.log --mains-v 120 --breaker-a 20
-
-Requires:
-    pip install python-can rich
 """
 
 import argparse
@@ -405,7 +402,6 @@ class State:
     )
     # session counters
     frames: int = 0
-    decoded: int = 0
     errors: int = 0
     started_at: float = field(default_factory=time.monotonic)
     # time.monotonic() of the most recent frame seen by decode(). Powers
@@ -518,10 +514,7 @@ def decode(msg: "can.Message", state: State, now: float) -> None:
     state.frames += 1
     state.last_frame_ts = now
 
-    did_anything = False
-
     def emit(name, value, unit):
-        nonlocal did_anything
         # Hot-path indexed names (per-cell, per-temp, per-fault-byte).
         m = _CELL_NAME.match(name)
         if m:
@@ -530,19 +523,16 @@ def decode(msg: "can.Message", state: State, now: float) -> None:
                 # Shared decoder emits volts; stream stores mV ints so the
                 # existing alert thresholds and display formatting work.
                 state.cells[idx].update(int(round(value * 1000)), now)
-                did_anything = True
             return
         m = _TEMP_NAME.match(name)
         if m:
             idx = int(m.group(1))
             if idx < NUM_TEMPS:
                 state.temps[idx].update(int(value), now)
-                did_anything = True
             return
         m = _FAULT_BYTE_NAME.match(name)
         if m:
             state.fault_bytes[int(m.group(1))].update(int(value), now)
-            did_anything = True
             return
         # Static mapping covers everything else stream tracks. Unknown
         # names (analyze-only signals like pack.current_raw, charger.flag.*,
@@ -551,7 +541,6 @@ def decode(msg: "can.Message", state: State, now: float) -> None:
         if attr is None:
             return
         getattr(state, attr).update(value, now)
-        did_anything = True
         # Derived state needs the just-updated value.
         if name == "pack.power_w":
             state.power_history.append((now, value))
@@ -581,22 +570,14 @@ def decode(msg: "can.Message", state: State, now: float) -> None:
                 state.soc_history.popleft()
 
     def clear_chan(name):
-        nonlocal did_anything
         attr = _NAME_TO_ATTR.get(name)
         if attr is None:
             return
         getattr(state, attr).clear()
-        did_anything = True
 
     category = proto_decode(msg, emit, clear_chan)
     if category == "parse_error":
         state.errors += 1
-    elif did_anything:
-        # Counts any frame where we either updated or cleared a Channel.
-        # This covers F108-idle and DM1-idle frames (which the original
-        # incremented because they ran through the F108/DM1 branches) as
-        # well as ordinary signal-bearing frames.
-        state.decoded += 1
 
 
 # --- BMS faults -------------------------------------------------------------
@@ -819,7 +800,6 @@ def render_header(state: State, now: float, mode: str = "live") -> Panel:
     rate = state.frames / uptime if uptime > 0 else 0.0
     line = (f"Up: {h:02d}:{m:02d}:{s:02d}    "
             f"Frames: {state.frames:,}    "
-            f"Decoded: {state.decoded:,}    "
             f"Rate: {rate:.0f} fps    "
             f"Errors: {state.errors}")
     label = "LIVE" if mode == "live" else "REPLAY"
@@ -1550,7 +1530,6 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
     can_obj: dict = {
         "state": "running" if state.frames > 0 else "stopped",
         "frames_rx": state.frames,
-        "frames_decoded": state.decoded,
     }
     if state.last_frame_ts is not None:
         can_obj["last_frame_age_s"] = round(now - state.last_frame_ts, 2)
