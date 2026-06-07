@@ -139,19 +139,29 @@ function update(d){
   document.getElementById('al').innerHTML=al.map(function(a){return'<div class="alert">⚠ '+a+'</div>';}).join('');
   const soc=p.soc_pct,scls=soc==null?'':soc<20?'bad':soc<40?'warn':'ok';
   const cur=p.current_a,pwr=p.power_w;
-  const curLbl=cur==null?'':cur<-0.5?'discharge':cur>0.5?'charge':'idle';
+  // Sign convention everywhere: positive = into pack (charging), negative = out.
+  const curLbl=cur==null?'':cur>0.5?'charge':cur<-0.5?'discharge':'idle';
+  const curCls=cur!=null&&cur>0.05?'ok':'';
+  const pwrCls=pwr!=null&&pwr>5?'ok':'';
+  const pwrStr=pwr==null?'–'
+    :(pwr>0?'+':'')+(pwr/1000).toFixed(1);
   document.getElementById('kpi').innerHTML=
     '<div class="card"><h3>SoC</h3><div class="big '+scls+'">'+f(soc,0)+'<span class="unit">%</span></div><div class="sub">'+(s.wh_remaining!=null&&s.wh_capacity?(s.wh_remaining/1000).toFixed(2)+' / '+fwh(s.wh_capacity):'')+'</div></div>'+
     '<div class="card"><h3>Voltage</h3><div class="big">'+f(p.voltage_v,1)+'<span class="unit">V</span></div><div class="sub">60 – 84 V range</div></div>'+
-    '<div class="card"><h3>Current</h3><div class="big">'+fi(cur)+'<span class="unit">A</span></div><div class="sub">'+curLbl+'</div></div>'+
-    '<div class="card"><h3>Power</h3><div class="big">'+(pwr!=null?(pwr/1000).toFixed(1):'–')+'<span class="unit">kW</span></div><div class="sub">'+(pwr!=null?Math.round(Math.abs(pwr)/150)+'% of 15 kW max':'')+'</div></div>';
-  const netCharging=s.wh_net!=null&&s.wh_net<0;
+    '<div class="card"><h3>Current</h3><div class="big '+curCls+'">'+fi(cur)+'<span class="unit">A</span></div><div class="sub">'+curLbl+'</div></div>'+
+    '<div class="card"><h3>Power</h3><div class="big '+pwrCls+'">'+pwrStr+'<span class="unit">kW</span></div><div class="sub">'+(pwr!=null?Math.round(Math.abs(pwr)/150)+'% of 15 kW max':'')+'</div></div>';
+  const netCharging=s.wh_net!=null&&s.wh_net>0;
   const etaLabel=netCharging?'ETA to 100%':'ETA to 0%';
   const etaVal=netCharging?s.eta_to_full_s:s.eta_to_zero_s;
+  const netCls=s.wh_net!=null&&s.wh_net>0?'ok':'';
+  const netStr=s.wh_net==null?'–'
+    :'<span class="'+netCls+'">'+(s.wh_net>0?'+':'')+fwh(s.wh_net)+'</span>';
+  var chgStr=s.wh_charged==null?'–'
+    :(s.wh_charged>0?'<span class="ok">':'<span>')+fwh(s.wh_charged)+'</span>';
   document.getElementById('psum').innerHTML=
     kv('Session draw',fwh(s.wh_drawn))+
-    kv('Session charge',fwh(s.wh_charged))+
-    kv('Session net',(s.wh_net!=null&&s.wh_net>0?'+':'')+fwh(s.wh_net))+
+    kv('Session charge',chgStr)+
+    kv('Session net',netStr)+
     kv(etaLabel,feta(etaVal));
   // Gauges (speed + power)
   function setGauge(val,max,progId,needId){
@@ -205,9 +215,21 @@ function update(d){
   }).join('');
   var bot='';
   if(d.charger){
+    var cs=chg.status;
+    var stTxt=cs==null?'–'
+      :cs===0?'idle'
+      :cs===1?'handshake'
+      :cs===2?'CHARGING (pack < 76.8 V)'
+      :cs===3?'CHARGING (pack ≥ 76.8 V)'
+      :'unknown (0x'+cs.toString(16).padStart(2,'0').toUpperCase()+')';
+    var dcw=(p.voltage_v!=null&&chg.current_a!=null)
+      ? Math.round(p.voltage_v*chg.current_a)+' W' : '–';
     bot+='<div class="card" style="grid-column:1/-1"><h3>Charger</h3>'+
-      kv('Output V',f(chg.voltage_v))+kv('Output A',f(chg.current_a))+
-      kv('Cmd V / A',f(cmd.voltage_v)+' / '+f(cmd.current_a))+'</div>';
+      kv('State',stTxt)+
+      kv('Charger voltage',chg.voltage_v!=null?chg.voltage_v.toFixed(1)+' V':'–')+
+      kv('Charger current',chg.current_a!=null?chg.current_a.toFixed(1)+' A':'–')+
+      kv('Charger power',dcw)+
+      kv('BMS setpoint V / A',f(cmd.voltage_v)+' / '+f(cmd.current_a))+'</div>';
   }
   document.getElementById('bot').innerHTML=bot;
   var age=can.last_frame_age_s;

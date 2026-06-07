@@ -606,19 +606,20 @@ String buildJson(bool pretty = true, bool minimal = false) {
         if (g_pack.temp_spread_c >= 0)     temp["spread_c"] = g_pack.temp_spread_c;
     }
 
-    // Session energy summary
+    // Session energy summary.
+    // Convention: positive = into pack (net charge), negative = out (net draw).
     auto sess = doc["session"].to<JsonObject>();
     sess["wh_drawn"]   = roundf(g_session_wh_drawn   * 10.0f) / 10.0f;
     sess["wh_charged"] = roundf(g_session_wh_charged * 10.0f) / 10.0f;
-    sess["wh_net"]     = roundf((g_session_wh_drawn - g_session_wh_charged) * 10.0f) / 10.0f;
+    sess["wh_net"]     = roundf((g_session_wh_charged - g_session_wh_drawn) * 10.0f) / 10.0f;
     sess["wh_capacity"] = PACK_CAPACITY_WH;
 
-    // Session-average net power (positive = net discharge, negative = net charge).
+    // Session-average net power. Positive = net charging, negative = net drawing.
     // Uses *active* time (sum of valid dt's), so bus-silent gaps don't dilute it.
     float avg_power_w = NAN;
     float active_hours = g_session_active_ms / 3600000.0f;
     if (active_hours > 0.01f) {                            // ≥ ~36 s of data
-        avg_power_w = (g_session_wh_drawn - g_session_wh_charged) / active_hours;
+        avg_power_w = (g_session_wh_charged - g_session_wh_drawn) / active_hours;
         if (!minimal) {
             sess["avg_power_w"] = roundf(avg_power_w * 10.0f) / 10.0f;
             sess["active_s"]    = g_session_active_ms / 1000;
@@ -630,12 +631,14 @@ String buildJson(bool pretty = true, bool minimal = false) {
         sess["wh_remaining"] = roundf(remaining * 10.0f) / 10.0f;
         // ETAs use session-average power so they don't jump with instantaneous load
         if (!isnan(avg_power_w)) {
-            if (avg_power_w > 50.0f) {
-                sess["eta_to_zero_s"] = (uint32_t)(remaining / avg_power_w * 3600.0f);
-            } else if (avg_power_w < -50.0f) {
+            if (avg_power_w < -50.0f) {
+                // Net drawing — extrapolate to empty.
+                sess["eta_to_zero_s"] = (uint32_t)(remaining / -avg_power_w * 3600.0f);
+            } else if (avg_power_w > 50.0f) {
+                // Net charging — extrapolate to full.
                 float headroom = PACK_CAPACITY_WH - remaining;
                 if (headroom > 0)
-                    sess["eta_to_full_s"] = (uint32_t)(headroom / -avg_power_w * 3600.0f);
+                    sess["eta_to_full_s"] = (uint32_t)(headroom / avg_power_w * 3600.0f);
             }
         }
     }
@@ -724,8 +727,8 @@ String buildJson(bool pretty = true, bool minimal = false) {
     // Charger
     if (g_charger.valid) {
         auto chg = doc["charger"].to<JsonObject>();
+        chg["status"] = g_charger.status;
         if (!minimal) {
-            chg["status"] = g_charger.status;
             chg["v_raw"]  = g_charger.v_raw;
             chg["i_raw"]  = g_charger.i_raw;
         }

@@ -691,8 +691,9 @@ def evaluate_alerts(state: State, mains_v: float, breaker_a: float,
 # --- TUI rendering ----------------------------------------------------------
 
 # Sparkline glyphs all grow from the bottom; sign is communicated by
-# colour (red = drawing, green = charging) since unicode block elements
-# don't have a clean symmetric set that grows above and below a baseline.
+# colour (green = charging, default = drawing) since unicode block
+# elements don't have a clean symmetric set that grows above and below
+# a baseline.
 _SPARK_LEVELS = " ▁▂▃▄▅▆▇█"   # 0 = baseline tick, 8 = max magnitude
 
 
@@ -700,8 +701,8 @@ def power_sparkline(state: State, width: int = POWER_SPARK_WIDTH) -> Text:
     """Return a coloured unicode sparkline of recent pack power.
 
     Buckets samples into `width` columns by timestamp. Bar height encodes
-    |power| scaled to the window's peak; colour encodes sign (red =
-    drawing, green = charging). Empty buckets render as a dim tick.
+    |power| scaled to the window's peak; colour encodes sign (green =
+    charging, default = drawing). Empty buckets render as a dim tick.
     """
     samples = list(state.power_history)
     if not samples:
@@ -739,7 +740,8 @@ def power_sparkline(state: State, width: int = POWER_SPARK_WIDTH) -> Text:
         if level == 0:
             out.append(ch, style="dim")
         elif m >= 0:
-            out.append(ch, style="red")
+            # m comes from pack.power_w (J1939 convention, positive = drawing).
+            out.append(ch)
         else:
             out.append(ch, style="green")
     return out
@@ -827,14 +829,16 @@ def render_pack(state: State, mains_v: float, efficiency: float,
     if pi is None:
         i_text = Text("---", style="dim")
     else:
-        # F100F3 bytes 2-3 BE biased; sign comes from the field itself
-        # (positive = drawing from pack, negative = charging into pack).
-        if pi > 0.05:
-            i_text = Text(f"+{pi:.1f} A (drawing)", style="red")
-        elif pi < -0.05:
-            i_text = Text(f"{pi:.1f} A (charging)", style="green")
+        # Underlying state.pack_i_a uses the J1939 convention (positive =
+        # drawing from pack). Flip for display so positive = charging.
+        # Green when charging in (positive), default style when drawing.
+        i_disp = -pi
+        if i_disp > 0.05:
+            i_text = Text(f"+{i_disp:.1f} A (charging)", style="green")
+        elif i_disp < -0.05:
+            i_text = Text(f"{i_disp:.1f} A (drawing)")
         else:
-            i_text = Text(f"{pi:.1f} A")
+            i_text = Text(f"{i_disp:+.1f} A")
     t.add_row("current", i_text)
 
     # F107 BMS current limit headroom. Pick the relevant limit from the
@@ -878,16 +882,19 @@ def render_pack(state: State, mains_v: float, efficiency: float,
             )
 
     if pack_v_ch.value is not None and pi is not None:
-        # Pack convention: positive current = discharging the pack.
-        # Power into the pack (charging) is negative; power out is positive.
-        dc_w = pack_v_ch.value * pi
-        t.add_row("power", Text(f"{dc_w:+.0f} W"))
-        if chgr_active and pi < 0:
-            ac_w = -dc_w / max(efficiency, 0.01)
+        # Display convention: positive = power into the pack (charging),
+        # negative = power out of the pack (drawing). Underlying pi is
+        # J1939 (positive = drawing), so flip for the display.
+        dc_w = pack_v_ch.value * -pi
+        p_style = "green" if dc_w > 0 else None
+        t.add_row("power", Text(f"{dc_w:+.0f} W", style=p_style))
+        if chgr_active and dc_w > 0:
+            ac_w = dc_w / max(efficiency, 0.01)
             ac_a = ac_w / max(mains_v, 1.0)
             t.add_row("AC est",
-                      Text(f"~{ac_w:.0f} W  ({ac_a:.1f} A @ {mains_v:.0f} V, "
-                           f"{efficiency * 100:.0f}% eff)"))
+                      Text(f"+{ac_w:.0f} W  ({ac_a:.1f} A @ {mains_v:.0f} V, "
+                           f"{efficiency * 100:.0f}% eff)",
+                           style="green"))
 
     # 60 s sparkline of pack power. Glyphs above the baseline (red) =
     # drawing, below (green) = charging. Empty until the first F100F3.
@@ -910,16 +917,16 @@ def render_pack(state: State, mains_v: float, efficiency: float,
         t.add_row("flags", flags_row)
 
     # Session-cumulative energy. Integrated across F100F3 frames since
-    # stream start. Net is positive when the session has drawn more
-    # than it charged.
+    # stream start. Net is positive when the session has charged more
+    # than it drew (energy into pack).
     wh_out = state.energy_wh_drawn
     wh_in = state.energy_wh_charged
     if wh_out > 0.5 or wh_in > 0.5:
         t.add_row("", "")
-        t.add_row("session draw", Text(f"{wh_out:.0f} Wh", style="red"))
+        t.add_row("session draw", Text(f"{wh_out:.0f} Wh"))
         t.add_row("session charge", Text(f"{wh_in:.0f} Wh", style="green"))
         net = wh_in - wh_out
-        net_style = "green" if net > 0 else "red"
+        net_style = "green" if net > 0 else None
         t.add_row("session net",
                   Text(f"{net:+.0f} Wh  "
                        f"({net / PACK_CAPACITY_WH * 100:+.1f}% of pack)",
@@ -1594,10 +1601,13 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
     pv = primary_pack_v(state).value
     if pv is not None:
         pack["voltage_v"] = round(pv, 2)
+    # JSON convention: positive = into the pack (charging), negative = out
+    # (drawing). Underlying state values use the J1939 wire convention
+    # (positive = drawing), so flip on the way out.
     if state.pack_i_a.value is not None:
-        pack["current_a"] = round(state.pack_i_a.value, 1)
+        pack["current_a"] = round(-state.pack_i_a.value, 1)
     if state.pack_power_w.value is not None:
-        pack["power_w"] = round(state.pack_power_w.value, 1)
+        pack["power_w"] = round(-state.pack_power_w.value, 1)
     if state.bms_soc_pct.value is not None:
         pack["soc_pct"] = round(state.bms_soc_pct.value, 1)
 
@@ -1628,7 +1638,8 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
     sess: dict = {
         "wh_drawn": round(state.energy_wh_drawn, 1),
         "wh_charged": round(state.energy_wh_charged, 1),
-        "wh_net": round(state.energy_wh_drawn - state.energy_wh_charged, 1),
+        # Net: positive = into pack (net charge), negative = out (net draw).
+        "wh_net": round(state.energy_wh_charged - state.energy_wh_drawn, 1),
         "wh_capacity": PACK_CAPACITY_WH,
     }
     if state.bms_soc_pct.value is not None:
@@ -1681,7 +1692,7 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
         out["motor"] = mot
 
     if state.chgr_status.value is not None:
-        chg: dict = {}
+        chg: dict = {"status": int(state.chgr_status.value)}
         if state.chgr_v.value is not None:
             chg["voltage_v"] = round(state.chgr_v.value, 2)
         if state.chgr_i.value is not None:
