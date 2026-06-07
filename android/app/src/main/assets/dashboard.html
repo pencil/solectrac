@@ -205,10 +205,9 @@ function update(d){
   }).join('');
   var bot='';
   if(d.charger){
-    var acSt=chg.line_ok?'<span class="ok">OK</span>':chg.no_line?'<span class="bad">No AC</span>':'–';
     bot+='<div class="card" style="grid-column:1/-1"><h3>Charger</h3>'+
       kv('Output V',f(chg.voltage_v))+kv('Output A',f(chg.current_a))+
-      kv('AC line',acSt)+kv('Cmd V / A',f(cmd.voltage_v)+' / '+f(cmd.current_a))+'</div>';
+      kv('Cmd V / A',f(cmd.voltage_v)+' / '+f(cmd.current_a))+'</div>';
   }
   document.getElementById('bot').innerHTML=bot;
   var age=can.last_frame_age_s;
@@ -240,3 +239,4 @@ if(window.SolectracBridge){
 </script>
 </body>
 </html>
+ 

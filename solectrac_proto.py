@@ -426,20 +426,18 @@ def decode(msg, emit, clear=_noop_clear):
         status = data[0]
         v_raw = le16(data[1], data[2])
         i_raw = le16(data[3], data[4])  # legacy combined u16 (kept for CSV)
-        flags = data[4]
         emit("charger.status", status, "")
         emit("charger.v_raw", v_raw, "")
         emit("charger.i_raw", i_raw, "")
-        emit("charger.flags", flags, "")
-        emit("charger.flag.output_disabled", 1 if flags & 0x04 else 0, "")
-        emit("charger.flag.line_ok", 1 if flags & 0x08 else 0, "")
-        emit("charger.flag.no_line", 1 if flags & 0x10 else 0, "")
         # Status 0x02 / 0x03 is a pack-V encoding-range selector for
         # data[1..2] (same scheme as F100F3 byte 0):
         #   0x02 → LO offset (pack 51.2..76.7 V)
         #   0x03 → HI offset (pack 76.8..102.3 V)
-        # Current (data[3..4]) decodes identically in both.
-        if status in (0x02, 0x03) and flags == 0x00:
+        # Current (data[3..4]) decodes identically in both. The data[4]==0
+        # guard skips the idle disconnect sentinel (i_raw = 0x0800) and any
+        # other out-of-band readings where the high byte is set — actual
+        # charging current stays in 0..25.5 A on this OBC.
+        if status in (0x02, 0x03) and data[4] == 0:
             offset = (CHARGER_V_OFFSET_LO_V if status == 0x02
                       else CHARGER_V_OFFSET_HI_V)
             emit("charger.voltage_v",

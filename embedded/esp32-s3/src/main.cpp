@@ -191,15 +191,9 @@ struct ChargerState {
     uint8_t  status   = 0;
     uint16_t v_raw    = 0;
     uint16_t i_raw    = 0;
-    uint8_t  flags    = 0;
     float    voltage_v = NAN;
     float    current_a = NAN;
-    bool output_disabled : 1;
-    bool line_ok         : 1;
-    bool no_line         : 1;
-    bool valid           : 1;
-    ChargerState() : output_disabled(false), line_ok(false),
-        no_line(false), valid(false) {}
+    bool     valid    = false;
 };
 
 struct ChgrCmdState {
@@ -509,13 +503,14 @@ void decodeCAN(uint32_t can_id, const uint8_t* raw, uint8_t len) {
         if (allZero(d)) return;
         g_charger.status         = d[0];
         g_charger.v_raw          = le16(d[1], d[2]);
-        g_charger.i_raw          = le16(d[3], d[4]);  // d[4] is flags; kept as legacy raw
-        g_charger.flags          = d[4];
-        g_charger.output_disabled= (d[4] & 0x04) != 0;
-        g_charger.line_ok        = (d[4] & 0x08) != 0;
-        g_charger.no_line        = (d[4] & 0x10) != 0;
-        // Mirror the F100F3 variant convention defensively: if d[0] == 0x02
-        // is ever observed with a meaningful voltage, decode at the LO base.
+        g_charger.i_raw          = le16(d[3], d[4]);  // legacy combined u16
+        // Status 0x02 / 0x03 is a pack-V encoding-range selector for d[1..2]
+        // (same scheme as F100F3 byte 0):
+        //   0x02 → LO offset (pack 51.2..76.7 V)
+        //   0x03 → HI offset (pack 76.8..102.3 V)
+        // Current (d[3..4]) decodes identically in both. The d[4] == 0 guard
+        // skips the idle disconnect sentinel (i_raw = 0x0800) and any other
+        // out-of-band readings — actual charging current stays in 0..25.5 A.
         if ((d[0] == 0x02 || d[0] == 0x03) && d[4] == 0x00) {
             float offset = (d[0] == 0x02) ? PACK_VOLTAGE_OFFSET_LO_V : PACK_VOLTAGE_OFFSET_HI_V;
             g_charger.voltage_v = g_charger.v_raw * PACK_VOLTAGE_LSB_V + offset;
@@ -733,11 +728,7 @@ String buildJson(bool pretty = true, bool minimal = false) {
             chg["status"] = g_charger.status;
             chg["v_raw"]  = g_charger.v_raw;
             chg["i_raw"]  = g_charger.i_raw;
-            chg["flags"]  = g_charger.flags;
-            chg["output_disabled"] = g_charger.output_disabled ? 1 : 0;
         }
-        chg["line_ok"] = g_charger.line_ok ? 1 : 0;
-        chg["no_line"] = g_charger.no_line ? 1 : 0;
         addFloat(chg, "voltage_v", g_charger.voltage_v, 2);
         addFloat(chg, "current_a", g_charger.current_a, 1);
     }

@@ -318,9 +318,6 @@ class State:
     chgr_v: Channel = field(default_factory=Channel)
     chgr_i: Channel = field(default_factory=Channel)
     chgr_status: Channel = field(default_factory=Channel)
-    # FF50CA byte 4 status-flags bitmap (bit 2 output_disabled, bit 3 line_ok,
-    # bit 4 no_line). Surfaced in the web JSON for the dashboard's AC pill.
-    chgr_flags: Channel = field(default_factory=Channel)
     # vehicle controller
     vc_state_raw: Channel = field(default_factory=Channel)
     # motor controller (FF21CA)
@@ -439,7 +436,7 @@ import re
 # Canonical signal name (as emitted by solectrac_proto.decode) → State
 # attribute that owns the Channel. Unknown names are silently ignored so
 # stream is forward-compatible with signals analyze.py emits but stream
-# doesn't yet track (e.g. pack.current_raw, charger.flag.*).
+# doesn't yet track (e.g. pack.current_raw).
 _NAME_TO_ATTR = {
     # F100 / F102 pack-level scalars
     "pack.voltage_v": "pack_v_terminal",
@@ -475,7 +472,6 @@ _NAME_TO_ATTR = {
     "bms.limit.mode": "limit_mode",
     # FF50 charger
     "charger.status": "chgr_status",
-    "charger.flags": "chgr_flags",
     "charger.voltage_v": "chgr_v",
     "charger.current_a": "chgr_i",
     # 0600 BMS→Charger command
@@ -543,7 +539,7 @@ def decode(msg: "can.Message", state: State, now: float) -> None:
             state.fault_bytes[int(m.group(1))].update(int(value), now)
             return
         # Static mapping covers everything else stream tracks. Unknown
-        # names (analyze-only signals like pack.current_raw, charger.flag.*,
+        # names (analyze-only signals like pack.current_raw,
         # bms.fault.code_NNN) are silently ignored.
         attr = _NAME_TO_ATTR.get(name)
         if attr is None:
@@ -1690,9 +1686,6 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
             chg["voltage_v"] = round(state.chgr_v.value, 2)
         if state.chgr_i.value is not None:
             chg["current_a"] = round(state.chgr_i.value, 1)
-        flags = int(state.chgr_flags.value or 0)
-        chg["line_ok"] = 1 if flags & 0x08 else 0
-        chg["no_line"] = 1 if flags & 0x10 else 0
         out["charger"] = chg
 
     if (state.chgr_cmd_v_v.value is not None

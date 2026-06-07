@@ -1137,7 +1137,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         <div id="bmu-hv"></div>
       </div>
       <div class="panel">
-        <h3>Shunt / Hall (0x0E40) <span class="tent">TENT.</span></h3>
+        <h3>Shunt / Hall (0x0E40)</h3>
         <div id="bmu-shunt"></div>
       </div>
       <div class="panel">
@@ -1426,7 +1426,7 @@ function renderBmu(b) {
   if (b.shunt_state && b.shunt_state.length >= 4) {
     const hall = (beI16(b.shunt_state, 0) / 10).toFixed(1);
     $('bmu-shunt').innerHTML = `<div class="bignum">${hall >= 0 ? '+' : ''}${hall}<span class="unit">A</span></div>
-      <div class="sub">Hall current — i16 BE ÷ 10. Differs from 0x2800 shunt by BMS self-draw (~1 A).</div>
+      <div class="sub">Hall current — i16 BE ÷ 10. Reads +1.4 A higher than 0x2800 shunt (BMS self-draw).</div>
       <div class="hex" style="margin-top:8px;">${hexSpaced(b.shunt_state)}</div>`;
   } else {
     $('bmu-shunt').innerHTML = `<div class="sub">${dash}</div>`;
