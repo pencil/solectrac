@@ -31,6 +31,7 @@ h3{font-size:.68em;text-transform:uppercase;letter-spacing:.1em;color:#757575;ma
 .status{border-radius:8px;padding:8px 14px;text-align:center;font-weight:700;font-size:.78em;letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px}
 .status.on{background:#c8e6c9;color:#1b5e20}
 .status.off{background:#eeeeee;color:#9e9e9e}
+.status.starting{background:#fff3cd;color:#ef6c00}
 #foot{text-align:center;font-size:.65em;color:#9e9e9e;margin-top:10px;padding-bottom:4px}
 .ok{color:#2e7d32}.warn{color:#ef6c00}.bad{color:#c62828}
 </style>
@@ -171,13 +172,14 @@ function update(d){
   document.getElementById('al').innerHTML=al.length
     ? '<div class="alert">⚠ '+al.join('<br>⚠ ')+'</div>'
     : '';
-  // Tractor on/off: motor.alive is authoritative — true iff FF21CA was
-  // broadcast within the last 0.5s. Stream.py and firmware always emit
-  // this field, so we never have to guess.
-  var isOn = !!m.alive;
+  // Tractor status: backend emits "on" / "starting" / "off". "Starting"
+  // shows up during the ~1.4s BMS boot ramp before the MC joins the bus.
+  var tractor = d.tractor || 'off';
   var statEl=document.getElementById('status');
-  statEl.className='status '+(isOn?'on':'off');
-  statEl.textContent='Tractor '+(isOn?'On':'Off');
+  statEl.className='status '+tractor;
+  statEl.textContent= tractor==='starting' ? 'Tractor Starting…'
+                    : tractor==='on'       ? 'Tractor On'
+                    : 'Tractor Off';
   const soc=p.soc_pct,scls=soc==null?'':soc<20?'bad':soc<40?'warn':'ok';
   const cur=p.current_a,pwr=p.power_w;
   // Sign convention everywhere: positive = into pack (charging), negative = out.
