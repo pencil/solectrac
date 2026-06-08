@@ -1,4 +1,4 @@
-# solectrac
+# CAN tooling for Solectrac tractors
 
 J1939 CAN-bus tooling for a Solectrac electric tractor:
 

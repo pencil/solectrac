@@ -817,7 +817,7 @@ def render_header(state: State, now: float, mode: str = "live") -> Panel:
             f"Rate: {rate:.0f} fps    "
             f"Errors: {state.errors}")
     label = "LIVE" if mode == "live" else "REPLAY"
-    return Panel(Text(line), title=f"Solectrac — {label}",
+    return Panel(Text(line), title=label,
                  border_style="cyan")
 
 
@@ -1827,7 +1827,7 @@ async def _ble_run(state: State, mode: str,
             "(>=1.0), pin `bleak<1` and re-sync.\n")
         return
 
-    server = BlessServer(name="solectrac")
+    server = BlessServer(name="tractor")
     # Writes to RX are accepted and silently discarded (firmware does the same).
     server.read_request_func = lambda ch, **_: ch.value
     server.write_request_func = lambda ch, value, **_: None

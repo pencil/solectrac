@@ -1,7 +1,7 @@
-# Solectrac CAN bus — system documentation
+# CAN bus documentation for Solectrac tractors
 
 CAN protocol and hardware documentation for a Solectrac electric
-tractork. All decode information is derived from captured CAN traffic, vendor
+tractor. All decode information is derived from captured CAN traffic, vendor
 manual tables, the COBO cluster datasheet, the "BMS Update" document, the
 Solectrac Parts Catalog (e25), and live injection tests on the tractor.
 

@@ -1,7 +1,7 @@
 # Solectrac Android app
 
 Mirrors the ESP32's web dashboard (`esp32/src/dashboard.html`) over BLE so the
-phone doesn't have to join the `solectrac` WiFi network. The app loads the same
+phone doesn't have to join the `tractor` WiFi network. The app loads the same
 HTML inside a `WebView` and pipes JSON snapshots — pushed from the ESP32's
 Nordic UART Service whenever any displayed signal changes — into the page via a
 `@JavascriptInterface` bridge.

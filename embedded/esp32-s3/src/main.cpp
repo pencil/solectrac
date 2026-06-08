@@ -57,7 +57,7 @@
 // WiFi runs in dual AP+STA mode: the board always broadcasts its own hotspot
 // (so it's reachable in the field), and concurrently tries to join the
 // configured home network for bench use. AP IP is 192.168.4.1.
-#define AP_SSID "solectrac"
+#define AP_SSID "tractor"
 #define AP_PASS "electricity"
 
 // ── J1939 source addresses ────────────────────────────────────────────────────
@@ -836,7 +836,7 @@ void slcanPoll() {
 
 // ── socketcand ────────────────────────────────────────────────────────────────
 // Streams raw CAN frames over WiFi using the socketcand ASCII protocol.
-// python-can: interface='socketcand', host='solectrac.local', port=28600,
+// python-can: interface='socketcand', host='tractor.local', port=28600,
 //             channel='can0'  (channel name is accepted but ignored).
 //
 // Single client at a time: a new connection drops the previous one. All work
@@ -962,7 +962,7 @@ class BleServerCb : public BLEServerCallbacks {
 };
 
 void bleInit() {
-    BLEDevice::init("solectrac");
+    BLEDevice::init("tractor");
     BLEDevice::setMTU(517);
 
     g_ble_server = BLEDevice::createServer();
@@ -1051,12 +1051,12 @@ void setup() {
     g_ap_running = WiFi.softAP(AP_SSID, AP_PASS);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-    // Wildcard DNS on the soft-AP: any hostname (solectrac.local, solectrac,
+    // Wildcard DNS on the soft-AP: any hostname (tractor.local, tractor,
     // captive-portal probes, etc.) resolves to the board's AP IP. Needed
     // because phones generally don't do mDNS over an AP with no internet.
     if (g_ap_running) dns_server.start(53, "*", WiFi.softAPIP());
 
-    MDNS.begin("solectrac");
+    MDNS.begin("tractor");
 
     server.on("/",     handleRoot);
     server.on("/json", handleJson);

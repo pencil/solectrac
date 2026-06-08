@@ -94,14 +94,14 @@ lsof /dev/cu.usbmodem*
 
 ## Endpoints
 
-Once the board is on the network it advertises itself as `solectrac.local`
+Once the board is on the network it advertises itself as `tractor.local`
 via mDNS.
 
 | URL / Port | Purpose |
 |---|---|
-| `http://solectrac.local/` | Auto-refreshing dashboard |
-| `http://solectrac.local/json` | Decoded state as JSON |
-| `solectrac.local:28600` | socketcand TCP stream of raw CAN frames |
+| `http://tractor.local/` | Auto-refreshing dashboard |
+| `http://tractor.local/json` | Decoded state as JSON |
+| `tractor.local:28600` | socketcand TCP stream of raw CAN frames |
 | `/dev/cu.usbmodem*` (USB CDC) | SLCAN stream of raw CAN frames |
 
 ### Consuming raw frames with `python-can`
@@ -117,7 +117,7 @@ interface kwargs, so use `can.logger` (or a Python snippet) when you need to
 pass `host` / `port`:
 
 ```bash
-uv run python -m can.viewer -i socketcand -c can0 --bus-kwargs host=solectrac.local port=28600
+uv run python -m can.viewer -i socketcand -c can0 --bus-kwargs host=tractor.local port=28600
 ```
 
 Only one socketcand client can be connected at a time; a second connection

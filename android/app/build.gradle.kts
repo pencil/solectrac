@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.solectrac.dashboard"
+    namespace = "com.schmitztech.solectrac.dashboard"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.solectrac.dashboard"
+        applicationId = "com.schmitztech.solectrac.dashboard"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

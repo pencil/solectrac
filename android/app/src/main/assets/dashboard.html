@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Solectrac</title>
+<title>Tractor Dashboard</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#f0f2f5;color:#212121;font-family:system-ui,sans-serif;padding:10px;max-width:600px;margin:0 auto}
@@ -256,19 +256,19 @@ function refresh(){
   fetch('/json').then(function(r){return r.json();}).then(update)
     .catch(function(){document.getElementById('foot').textContent='Error — retrying…';});
 }
-// When hosted inside the Android WebView, window.SolectracBridge is injected
-// by MainActivity. We then receive pushed JSON via dispatchSolectracUpdate
+// When hosted inside the Android WebView, window.DashboardBridge is injected
+// by MainActivity. We then receive pushed JSON via dispatchDashboardUpdate
 // (called from the BLE reassembler) instead of polling /json.
-window.dispatchSolectracUpdate=function(s){
+window.dispatchDashboardUpdate=function(s){
   var d;
   try{d=JSON.parse(s);}
   catch(e){document.getElementById('foot').textContent='Bad JSON: '+e.message;return;}
   try{update(d);}
   catch(e){document.getElementById('foot').textContent='Render error: '+e.message;}
 };
-if(window.SolectracBridge){
+if(window.DashboardBridge){
   document.getElementById('foot').textContent='Waiting for BLE…';
-  try{window.SolectracBridge.ready();}catch(e){}
+  try{window.DashboardBridge.ready();}catch(e){}
 }else{
   refresh();
   setInterval(refresh,200);

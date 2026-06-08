@@ -18,9 +18,9 @@ The default UDS session is read-only — no SecAccess unlock is required for
 any of the DIDs this tool reads.
 
 Usage:
-    ./solectrac-bms-diagnostics.py                          # socketcand → solectrac.local
+    ./solectrac-bms-diagnostics.py                          # socketcand → tractor.local
     ./solectrac-bms-diagnostics.py --interface socketcand \\
-        --host solectrac.local --socketcand-port 28600 --channel can0
+        --host tractor.local --socketcand-port 28600 --channel can0
     ./solectrac-bms-diagnostics.py --interface canalystii --channel 0
     ./solectrac-bms-diagnostics.py --interface slcan \\
         --channel /dev/tty.usbmodem1101
@@ -946,7 +946,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Solectrac BMS Diagnostics</title>
+<title>BMS Diagnostics for Solectrac Tractor</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -1064,7 +1064,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 </head>
 <body>
 <nav class="topbar">
-  <span class="title">Solectrac BMS</span>
+  <span class="title">BMS Diagnostics for Solectrac Tractor</span>
   <a href="#overview">Overview</a>
   <a href="#charging">Charging</a>
   <a href="#bmu">BMU</a>
@@ -1637,9 +1637,9 @@ def main():
     p.add_argument("--channel", default="can0",
                    help="bus channel: socketcand channel name, canalystii "
                         "channel index, or slcan serial device (default: can0)")
-    p.add_argument("--host", default="solectrac.local",
+    p.add_argument("--host", default="tractor.local",
                    help="remote host for network interfaces, e.g. socketcand "
-                        "(default: solectrac.local)")
+                        "(default: tractor.local)")
     p.add_argument("--socketcand-port", type=int, default=28600,
                    help="socketcand port (default: 28600); HTTP server port "
                         "is --port")
@@ -1685,7 +1685,7 @@ def main():
 
     server = StateServer((args.bind, args.port), StateHandler, state, lock)
     url = f"http://{args.bind}:{args.port}/"
-    print(f"Serving Solectrac BMS dashboard at {url}", file=sys.stderr)
+    print(f"Serving BMS dashboard at {url}", file=sys.stderr)
     print(f"Transport: {state.transport_desc}", file=sys.stderr)
     print("Ctrl-C to stop.", file=sys.stderr)
     if args.open:

@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "Solectrac"
+rootProject.name = "Tractor Dashboard"
 include(":app")
