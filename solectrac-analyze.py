@@ -44,7 +44,9 @@ Signal names use a `domain.name` (or `domain.NN.name`) convention:
                                   36,950 of 36,950 corpus frames; previously
                                   labelled 'pack.flags' but never carried flags.
     pack.v_estimate            20 * mean(min, max) / 1000
-    pack.voltage_v             F100 byte 1: pack voltage, b * 0.1 + 76.8 V
+    pack.voltage_v             F100 byte 1: pack voltage, b * 0.1 + offset
+                               (byte 0 selects offset: 0x02 => 51.2 V,
+                                0x03 => 76.8 V)
     pack.current_raw           F100 bytes 2-3 (raw biased u16)
     pack.current_a             F100 signed pack current, A
     pack.power_w               F100 derived: pack.voltage_v * pack.current_a (signed; + draw / - charge)
@@ -161,11 +163,13 @@ Decoder assumptions (verify against the BMS spec before trusting numerically):
                          to match the computed (max-min) in 36,950/36,950
                          corpus frames).
   * PGN 0xF100 byte 1 (data[1]) = pack voltage at the BMS terminals,
-        encoded as 0.1 V/bit with a +76.8 V offset (V = b * 0.1 + 76.8).
+        encoded as 0.1 V/bit with a byte-0-selected offset:
+          byte 0 == 0x02 -> +51.2 V (covers 51.2..76.7 V)
+          byte 0 == 0x03 -> +76.8 V (covers 76.8..102.3 V)
         Confirmed by linear regression of byte 1 against 20 * mean cell mV
-        across 24 captures spanning byte values 53..66 (82.0..83.4 V),
-        residuals < 0.55 V, and cross-checked against the FF50 charger
-        frame which uses an identical encoding.
+        across captures spanning both voltage ranges, and cross-checked
+        against the FF50 charger frame which uses the same low/high
+        encoding scheme.
   * PGN 0xF100 bytes 2-3 BE = signed pack current at 0.1 A/bit, biased so that
         raw 0x7D00 = 0 A (positive = drawing from pack, negative = charging).
         Cross-validated by the amp-*.asc dashboard-anchored set (1, 18, 35, 42,
@@ -585,9 +589,11 @@ DECODERS = [
      "subtract 1 for 0-based temp_index"),
     ("pack.temp_spread_c", "F104", "F3", "4", "u8",
      "c", "verified", "= byte 0 - byte 1 in every observed capture"),
-    ("pack.voltage_v", "F100", "F3", "1", "u8 * 0.1 + 76.8",
+    ("pack.voltage_v", "F100", "F3", "0, 1",
+     "byte1 * 0.1 + offset(byte0: 0x02=>51.2, 0x03=>76.8)",
      "v", "verified",
-     "anchored by 24-capture regression vs 20*mean(cell mV); confirmed by FF50"),
+     "byte 0 selects the low/high voltage range; anchored by regression vs "
+     "20*mean(cell mV) across both ranges; confirmed by FF50"),
     ("pack.current_raw", "F100", "F3", "2-3", "BE u16 (biased)",
      "", "verified", "subtract 0x7D00 for signed amps"),
     ("pack.current_a", "F100", "F3", "2-3", "(BE u16 - 0x7D00) * 0.1",
@@ -937,7 +943,7 @@ def summarize(counts: dict, rows: list):
         chgr_i = values_for(rows, scenario, "charger.current_a")
         if chgr_v:
             print(f"    chgr V    : {min(chgr_v):.1f}..{max(chgr_v):.1f} V "
-                  f"(0.1 V/bit + 76.8 V; meaningful only while status=0x03)")
+                  f"(0.1 V/bit + status-selected offset; status=0x02/0x03)")
             print(f"    chgr I    : {min(chgr_i):.1f}..{max(chgr_i):.1f} A")
         # Per-channel module temps share the temp.NN.c naming.
         temps_c = [r[4] for r in rows
