@@ -109,7 +109,9 @@ Signal names use a `domain.name` (or `domain.NN.name`) convention:
     motor.rpm_signed           FF21CA RPM with directional sign
     motor.rpm_magnitude        FF21CA RPM unsigned
     motor.direction            +1 forward / 0 neutral / -1 reverse (F/N/R lever, byte 7 low nibble)
-    motor.range_gear           1..3 range selector (byte 7 high nibble)
+    motor.range                R1/R2/R3 range-switch selector, value 1..3
+                               (byte 7 high nibble; RPM cap selector — NOT the
+                               mechanical L/M/H gear, which is sensor-less)
     motor.throttle_raw         FF21CA byte 0 — unsigned magnitude of the
                                controller's commanded motor effort (torque /
                                current command). Rises during both drive and
@@ -275,10 +277,10 @@ Decoder assumptions (verify against the BMS spec before trusting numerically):
                                          in Forward, byte 7 = 0x04 -> 0x14
                                          -> 0x24 (high nibble 0 -> 1 -> 2).
                      Encoding:
-                       high nibble 0x0/0x1/0x2 = Range 1/2/3
+                       high nibble 0x0/0x1/0x2 = range switch R1/R2/R3
                        low  nibble 0x0/0x4/0x8 = N / F / R
                      Direction sign (for signed RPM) comes from the low
-                     nibble; range gear is reported separately.
+                     nibble; range is reported separately.
     Frame is suppressed entirely while charging (contactors open for traction).
   * PGN 0xFF21 from 0x12: dashboard / instrument-cluster heartbeat.
         Same PGN as the motor telemetry above, but a different sender (SA
@@ -732,9 +734,9 @@ DECODERS = [
      "low nibble: 0x4->+1, 0x8->-1, 0x0->0",
      "", "verified",
      "F/N/R lever; verified by drive-r-n-f.asc walking R->N->F"),
-    ("motor.range_gear", "FF21", "CA", "7",
+    ("motor.range", "FF21", "CA", "7",
      "(b7 >> 4) + 1", "", "verified",
-     "range selector 1..3; verified by range-1-2-3.asc walking 1->2->3"),
+     "range switch R1/R2/R3 (RPM cap selector); verified by range-1-2-3.asc walking 1->2->3"),
     ("motor.throttle_raw", "FF21", "CA", "0", "u8 (raw)",
      "", "verified",
      "unsigned magnitude of controller's commanded motor effort "
@@ -949,7 +951,7 @@ def summarize(counts: dict, rows: list):
             print(f"    |RPM|     : {min(rpms_mag)}..{max(rpms_mag)}")
             print(f"    throttle  : {min(thr)}..{max(thr)} (raw)")
             print(f"    F/N/R     : F={n_fwd}  R={n_rev}  N={n_neu}")
-            ranges = values_for(rows, scenario, "motor.range_gear")
+            ranges = values_for(rows, scenario, "motor.range")
             if ranges:
                 seen = sorted(set(ranges))
                 counts = "  ".join(f"R{g}={ranges.count(g)}" for g in seen)

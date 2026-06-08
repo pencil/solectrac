@@ -781,10 +781,10 @@ at 15 °C the whole time:
 
 **Packed transmission state (data[7]).**
 
-    high nibble (data[7] >> 4)  = range gear
-        0x0 = Range 1
-        0x1 = Range 2
-        0x2 = Range 3
+    high nibble (data[7] >> 4)  = range switch (RPM cap selector)
+        0x0 = R1 (2000 RPM cap)
+        0x1 = R2 (2500 RPM cap)
+        0x2 = R3 (2800 RPM cap)
 
     low nibble  (data[7] & 0xF) = F/N/R lever
         0x0 = Neutral
@@ -800,37 +800,45 @@ present in data[7]. There is no CAN signal that distinguishes this
 both cases. Applications must track power-on state independently and
 prompt the operator to cycle through Neutral before commanding motion.
 
-**Range → ground speed.** Range 1/2/3 are the L/M/H positions on the
-mechanical range gear shift lever (Low/Medium/High; the L-M-N-H lever
-also has a Neutral position, which disengages drive entirely — the
-electrical bus reports only the three driven positions). The CET
-Operator Manual page 34 publishes the full motor-RPM → ground-speed
-table for both tire options. The relationship is linear in motor RPM
-within each range:
+**Range switch R1/R2/R3 — CONFIRMED.** The high nibble of data[7] is
+the operator's range-switch selection from the dashboard control
+(3 settings labeled with animal icons on the tractor — turtle at R1,
+rabbit at R3; referred to as R1/R2/R3 throughout this documentation).
+It selects a motor-RPM cap (2000 / 2500 / 2800) and is **not** a
+mechanical gear stage — it does not change any drivetrain ratio. The
+cap is throttle-side only: it limits inverter-commanded RPM but not
+coast/regen overspeed. Motor RPM > 3000 has been observed in R3 while
+regen is active.
 
-| Range            | km/h per 1000 motor RPM | km/h at 2800 RPM (max) |
+**The mechanical L/M/N/H range lever is sensor-less** and broadcasts
+nothing on CAN. Its position cannot be recovered from any frame on this
+bus — only the operator knows it. A controlled rev-test capture
+(R3-mode pinned, F/N/R lever in Forward, pedal floored to 2800 motor
+RPM in each of L, M, H, and Neutral on the mechanical lever) showed the
+high nibble stayed at 0x2 across all four mechanical positions, while
+the FF21CA "throttle" effort byte tracked the drivetrain load and
+ramped from ~0x22 (mechanical N, drivetrain disengaged) to ~0x84
+(mechanical H) — see the Throttle subsection above.
+
+**Ground speed is NOT derivable from CAN.** Wheel-speed computation
+requires knowing which mechanical gear is engaged, which the bus does
+not report. The CET Operator Manual page 34 publishes the linear
+motor-RPM → ground-speed coefficients for both tire options. They are
+recorded here as reference if the mechanical gear is known by other
+means (e.g. operator input), but they are unsafe to apply to live CAN
+data:
+
+| Mechanical range | km/h per 1000 motor RPM | km/h at 2800 RPM (max) |
 |------------------|-------------------------|------------------------|
-| 1 (Low, Agri)    | 1.64                    | 4.6                    |
-| 2 (Medium, Agri) | 3.14                    | 8.8                    |
-| 3 (High, Agri)   | 6.25                    | 17.5                   |
-| 1 (Low, Turf)    | 2.04                    | 5.7                    |
-| 2 (Medium, Turf) | 3.07                    | 8.6                    |
-| 3 (High, Turf)   | 6.07                    | 17.0                   |
+| L (Low, Agri)    | 1.64                    | 4.6                    |
+| M (Medium, Agri) | 3.14                    | 8.8                    |
+| H (High, Agri)   | 6.25                    | 17.5                   |
+| L (Low, Turf)    | 2.04                    | 5.7                    |
+| M (Medium, Turf) | 3.07                    | 8.6                    |
+| H (High, Turf)   | 6.07                    | 17.0                   |
 
 "Agri" = 5×12 front / 8.0×18 rear; "Turf" = 23×8.5-12 front /
-33×13.5-16.5 rear. The S/N/F switch is a motor-RPM cap (2000/2500/
-2800 RPM), not a gear stage — it does not change the ratio, only the
-maximum motor RPM and therefore the maximum ground speed within the
-selected range.
-
-The cap is **throttle-side only**: it limits inverter-commanded RPM,
-not coast/regen overspeed. Motor RPM > 3000 has been observed in
-F-mode (cap = 2800) while regen is active.
-
-This resolves the motor → wheel ground-speed derivation without
-needing to compute the gear ratio explicitly: read motor RPM from
-FF21CA data[3..4], read range from data[7] high nibble, multiply by
-the per-range coefficient above.
+33×13.5-16.5 rear.
 
 
 #### FECA (DM1) — MC fault channel — CONFIRMED via injection

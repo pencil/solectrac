@@ -217,13 +217,20 @@ THROTTLE_PCT_PER_BIT = 100.0 / (0xFF - THROTTLE_DEAD_LOW)  # raw 0xFF = 100%
 # (https://solectracsupport.com/FT25GUSAOPM.pdf), at the max-RPM column:
 # Low 5.7 km/h @ 2800 RPM, Medium 8.6 km/h @ 2800 RPM, High 17.0 km/h @
 # 2800 RPM. Relationship is linear in motor RPM within each range. The
-# S/N/F switch is a motor-RPM cap, not a gear stage, and does not affect
-# this calibration. The Agri tire option uses different coefficients
-# (5x12 / 8.0x18) — swap in 4.6/8.8/17.5 if those tires are fitted.
+# range switch (R1/R2/R3) is a motor-RPM cap, not a gear stage, and does
+# not affect this calibration. The Agri tire option uses different
+# coefficients (5x12 / 8.0x18) — swap in 4.6/8.8/17.5 if those tires are
+# fitted.
+#
+# NOTE: this lookup keys off the range-switch value, which does NOT
+# correspond to the mechanical L/M/H lever — the mechanical gear is
+# sensor-less. See DOCUMENTATION.md §FF21CA "Ground speed is NOT
+# derivable from CAN" for why these coefficients are unsafe for live
+# decoding.
 KMH_PER_RPM_HIGH_TURF = {
-    1: 5.7 / 2800,    # Low (range gear "L")
-    2: 8.6 / 2800,    # Medium (range gear "M")
-    3: 17.0 / 2800,   # High (range gear "H")
+    1: 5.7 / 2800,
+    2: 8.6 / 2800,
+    3: 17.0 / 2800,
 }
 KMH_TO_MPH = 0.6213712
 
@@ -325,7 +332,7 @@ class State:
     motor_rpm_mag: Channel = field(default_factory=Channel)    # |rpm| magnitude
     motor_throttle: Channel = field(default_factory=Channel)
     motor_direction: Channel = field(default_factory=Channel)  # -1 R / 0 N / +1 F (byte 7 low nibble)
-    motor_range_gear: Channel = field(default_factory=Channel) # 1..3 (byte 7 high nibble)
+    motor_range: Channel = field(default_factory=Channel)      # R1/R2/R3 (byte 7 high nibble; RPM cap selector)
     # FF21CA bytes 4 and 5 are both J1939 +40 C-offset temps; byte 4 is
     # the main controller (consistently warmer, ramps from cold-start) and
     # byte 5 is the motor housing.
@@ -484,7 +491,7 @@ _NAME_TO_ATTR = {
     "motor.rpm_signed": "motor_rpm",
     "motor.rpm_magnitude": "motor_rpm_mag",
     "motor.direction": "motor_direction",
-    "motor.range_gear": "motor_range_gear",
+    "motor.range": "motor_range",
     "motor.throttle_raw": "motor_throttle",
     "motor.controller_temp_c": "controller_temp_c",
     "motor.motor_temp_c": "motor_temp_c",
@@ -1260,7 +1267,7 @@ def render_motor(state: State, now: float) -> Panel:
         di_text = Text("NEUTRAL", style="dim")
     t.add_row("F/N/R", di_text)
 
-    rg = state.motor_range_gear.value
+    rg = state.motor_range.value
     if rg is None:
         rg_text = Text("---", style="dim")
     else:
@@ -1689,9 +1696,9 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
         mot: dict = {"rpm_magnitude": int(state.motor_rpm_mag.value)}
         if state.motor_direction.value is not None:
             mot["direction"] = int(state.motor_direction.value)
-        if state.motor_range_gear.value is not None:
-            rg = int(state.motor_range_gear.value)
-            mot["range_gear"] = rg
+        if state.motor_range.value is not None:
+            rg = int(state.motor_range.value)
+            mot["range"] = rg
             if 1 <= rg <= 3:
                 kmh = state.motor_rpm_mag.value * KMH_PER_RPM[rg - 1]
                 mot["speed_kmh"] = round(kmh, 2)

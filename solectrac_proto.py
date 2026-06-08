@@ -360,11 +360,11 @@ def decode(msg, emit, clear=_noop_clear):
             direction = -1
         else:
             direction = 0
-        range_gear = ((data[7] >> 4) & 0x0F) + 1
+        range_ = ((data[7] >> 4) & 0x0F) + 1
         emit("motor.rpm_signed", direction * rpm_mag, "rpm")
         emit("motor.rpm_magnitude", rpm_mag, "rpm")
         emit("motor.direction", direction, "")
-        emit("motor.range_gear", range_gear, "")
+        emit("motor.range", range_, "")
         emit("motor.throttle_raw", data[0], "")
         if data[4]:
             emit("motor.controller_temp_c", data[4] - TEMP_OFFSET_C, "c")
