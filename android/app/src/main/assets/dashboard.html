@@ -28,11 +28,15 @@ h3{font-size:.68em;text-transform:uppercase;letter-spacing:.1em;color:#757575;ma
 .pill{padding:3px 10px;border-radius:20px;font-size:.72em;background:#eee;color:#9e9e9e}
 .pill.on{background:#c8e6c9;color:#1b5e20}
 .alert{background:#ffcdd2;color:#b71c1c;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:.9em;font-weight:600}
+.status{border-radius:8px;padding:8px 14px;text-align:center;font-weight:700;font-size:.78em;letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px}
+.status.on{background:#c8e6c9;color:#1b5e20}
+.status.off{background:#eeeeee;color:#9e9e9e}
 #foot{text-align:center;font-size:.65em;color:#9e9e9e;margin-top:10px;padding-bottom:4px}
 .ok{color:#2e7d32}.warn{color:#ef6c00}.bad{color:#c62828}
 </style>
 </head>
 <body>
+<div id="status" class="status off">Tractor —</div>
 <div id="al"></div>
 <div class="g4" id="kpi"></div>
 <div class="card" style="margin-bottom:8px">
@@ -165,6 +169,13 @@ function update(d){
     al.push('MC '+c+(MC_FAULTS[c]?' ('+MC_FAULTS[c]+')':''));
   });
   document.getElementById('al').innerHTML=al.map(function(a){return'<div class="alert">⚠ '+a+'</div>';}).join('');
+  // Tractor on/off: motor.alive is authoritative — true iff FF21CA was
+  // broadcast within the last 0.5s. Stream.py and firmware always emit
+  // this field, so we never have to guess.
+  var isOn = !!m.alive;
+  var statEl=document.getElementById('status');
+  statEl.className='status '+(isOn?'on':'off');
+  statEl.textContent='Tractor '+(isOn?'On':'Off');
   const soc=p.soc_pct,scls=soc==null?'':soc<20?'bad':soc<40?'warn':'ok';
   const cur=p.current_a,pwr=p.power_w;
   // Sign convention everywhere: positive = into pack (charging), negative = out.

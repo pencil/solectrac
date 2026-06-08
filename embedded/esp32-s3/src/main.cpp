@@ -185,6 +185,7 @@ struct MotorState {
     int8_t   controller_temp_c = INT8_MIN;
     int8_t   motor_temp_c      = INT8_MIN;
     bool     valid             = false;
+    uint32_t last_seen_ms      = 0;
 };
 
 struct ChargerState {
@@ -481,6 +482,7 @@ void decodeCAN(uint32_t can_id, const uint8_t* raw, uint8_t len) {
         if (d[4]) g_motor.controller_temp_c = (int8_t)(d[4] - TEMP_OFFSET_C);
         if (d[5]) g_motor.motor_temp_c      = (int8_t)(d[5] - TEMP_OFFSET_C);
         g_motor.valid = true;
+        g_motor.last_seen_ms = millis();
 
     } else if (src == SRC_DASH && pgn == PGN_FF21) {
         g_dash_alive = d[0];
@@ -702,28 +704,37 @@ String buildJson(bool pretty = true, bool minimal = false) {
     if (g_dm1.valid && g_dm1.dtc_spn != 0)
         mc_codes.add(g_dm1.dtc_spn);
 
-    // Motor
-    if (g_motor.valid) {
+    // Motor — always emit so motor.alive is the canonical tractor-on signal.
+    // FF21CA broadcasts at ~85 Hz; the MC stops within ~1s of key-off. The
+    // 500 ms window catches brief key cycles without false-positiving on a
+    // single dropped frame. last_seen_ms==0 means FF21CA has never been
+    // heard in this boot — explicitly false rather than relying on a
+    // millis()-rollover-from-zero accident.
+    {
         auto mot = doc["motor"].to<JsonObject>();
-        if (!minimal) mot["rpm_signed"] = g_motor.rpm_signed;
-        mot["rpm_magnitude"] = g_motor.rpm_magnitude;
-        mot["direction"]     = g_motor.direction;
-        mot["range"]    = g_motor.range;
-        mot["torque_raw"] = g_motor.torque_raw;
-        // Ground speed from RPM × range (Turf/Industrial tire calibration,
-        // per Operator Manual p34; Agri tires would need different coeffs).
-        if (g_motor.range >= 1 && g_motor.range <= 3) {
-            static const float KMH_PER_RPM[3] = {
-                5.7f / 2800.0f, 8.6f / 2800.0f, 17.0f / 2800.0f
-            };
-            float kmh = g_motor.rpm_magnitude * KMH_PER_RPM[g_motor.range - 1];
-            addFloat(mot, "speed_kmh", kmh, 2);
-            addFloat(mot, "speed_mph", kmh * 0.6213712f, 2);
+        mot["alive"] = g_motor.last_seen_ms != 0
+                       && (millis() - g_motor.last_seen_ms) < 500;
+        if (g_motor.valid) {
+            if (!minimal) mot["rpm_signed"] = g_motor.rpm_signed;
+            mot["rpm_magnitude"] = g_motor.rpm_magnitude;
+            mot["direction"]     = g_motor.direction;
+            mot["range"]    = g_motor.range;
+            mot["torque_raw"] = g_motor.torque_raw;
+            // Ground speed from RPM × range (Turf/Industrial tire calibration,
+            // per Operator Manual p34; Agri tires would need different coeffs).
+            if (g_motor.range >= 1 && g_motor.range <= 3) {
+                static const float KMH_PER_RPM[3] = {
+                    5.7f / 2800.0f, 8.6f / 2800.0f, 17.0f / 2800.0f
+                };
+                float kmh = g_motor.rpm_magnitude * KMH_PER_RPM[g_motor.range - 1];
+                addFloat(mot, "speed_kmh", kmh, 2);
+                addFloat(mot, "speed_mph", kmh * 0.6213712f, 2);
+            }
+            if (g_motor.controller_temp_c != INT8_MIN)
+                mot["controller_temp_c"] = g_motor.controller_temp_c;
+            if (g_motor.motor_temp_c != INT8_MIN)
+                mot["motor_temp_c"] = g_motor.motor_temp_c;
         }
-        if (g_motor.controller_temp_c != INT8_MIN)
-            mot["controller_temp_c"] = g_motor.controller_temp_c;
-        if (g_motor.motor_temp_c != INT8_MIN)
-            mot["motor_temp_c"] = g_motor.motor_temp_c;
     }
 
     // Charger

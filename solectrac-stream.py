@@ -1693,8 +1693,14 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
         mc_codes.append(int(state.dm1_spn.value))
     out["faults"] = {"bms": bms_codes, "mc": mc_codes}
 
+    # motor.alive is always emitted so the dashboard's tractor-on/off banner
+    # never has to guess: false when FF21CA has never been heard or has been
+    # silent for >0.5s, true otherwise. FF21CA broadcasts at ~85 Hz so 0.5s
+    # is 40+ frames of margin while still flipping mid-gap during key cycles.
+    mc_age = (now - state.motor_rpm_mag.ts) if state.motor_rpm_mag.ts is not None else 999.0
+    mot: dict = {"alive": mc_age < 0.5}
     if state.motor_rpm_mag.value is not None:
-        mot: dict = {"rpm_magnitude": int(state.motor_rpm_mag.value)}
+        mot["rpm_magnitude"] = int(state.motor_rpm_mag.value)
         if state.motor_direction.value is not None:
             mot["direction"] = int(state.motor_direction.value)
         if state.motor_torque.value is not None:
@@ -1710,7 +1716,7 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
             mot["controller_temp_c"] = int(state.controller_temp_c.value)
         if state.motor_temp_c.value is not None:
             mot["motor_temp_c"] = int(state.motor_temp_c.value)
-        out["motor"] = mot
+    out["motor"] = mot
 
     if state.chgr_status.value is not None:
         chg: dict = {"status": int(state.chgr_status.value)}

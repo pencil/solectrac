@@ -752,10 +752,19 @@ Three observations that establish the "effort, not pedal" reading:
 
 The forward/reverse ceiling asymmetry noted historically (raw ceilings
 of 0xFF vs ~0x96) is a controller-side reverse-effort limiter applied
-before the byte goes on the wire. Values in the 0xFB–0xFF range
-occasionally appear during sustained heavy real-world driving and may
-represent a controller-internal saturation marker rather than a real
-effort level — SPECULATIVE.
+before the byte goes on the wire.
+
+**Brief 0x00 transients under heavy load — CONFIRMED.** During heavy
+acceleration bursts where the byte is otherwise pinned at 0xFE/0xFF,
+the value occasionally drops to 0x00 for 1–3 frames (~30 ms) before
+snapping back to ≥0xFE. These transients only appear at non-zero
+motor RPM in the middle of a sustained-high cluster (immediately
+preceding and following frames both ≥ 0xF0), so they cannot be real
+zero-effort readings. The mechanism is most plausibly an 8-bit
+wraparound or overflow artifact in the controller's internal effort
+calculation — TENTATIVE. Consumers should hold the previous reading
+across any 0x00 sample whose neighbours are near full-scale; treating
+the 0x00 literally will produce dashboard flicker at peak load.
 
 **Controller and motor temperatures (data[4], data[5]) — CONFIRMED.** Both u8 with
 the J1939 −40 °C offset. Raw 0 = not present (suppressed). data[4] is
