@@ -649,7 +649,7 @@ as the code on).
 | Bit | Mask | Code | Meaning                                       |
 |-----|------|------|-----------------------------------------------|
 | 0   | 0x01 | 140  | System fault level                            |
-| 1   | 0x02 | —    | No dashboard code under injection, but fires organically alongside code 140 during the low-SOC 100.0 A F107F3 state — most likely a hidden "torque-reduced" status flag the dashboard doesn't render |
+| 1   | 0x02 | —    | Status flag, no dashboard code. Co-fires with bit 0 (140) and qualifies it — see byte-7 bit-1 note below. TENTATIVE |
 | 2   | 0x04 | —    | (silent)                                      |
 | 3   | 0x08 | 142  | BMS fault need maintenance                    |
 | 4   | 0x10 | 143  | Battery fault need maintenance                |
@@ -664,8 +664,26 @@ Notable:
 - Bit 6 genuinely re-asserts code 144 (re-verified with single-bit
   injection). Likely a severity-pair the dashboard renders
   identically.
-- Bits 1 and 2 might still carry internal flags that don't surface as
-  numeric codes.
+- Bit 2 has never been observed asserted; semantics UNKNOWN.
+
+**Byte-7 bit 1 (0x02) — qualifier on code 140** (TENTATIVE).
+Across the capture corpus, bit 1 has only two observed byte-7
+contexts: `0x03` (= 140 + bit 1, dominant) and `0xBB` (= 140 + bit 1 +
+142 + 143 + 144 + 145). It **never fires without bit 0 (code 140)**.
+But the reverse is not true: code 140 can fire with bit 1 *clear*,
+and that case shows up only in charging-context captures with byte 7
+= `0xB9` (140 + 142 + 143 + 144 + 145; the "full-charge maintenance"
+pattern with bit 1 deliberately suppressed).
+
+That gives a tight semantic: **bit 1 ≈ "code 140 is asserted and the
+BMS is not in the charging-maintenance state"** — a discharge-side
+qualifier on 140 that filters out the noisy charging-side assertions.
+It still does not isolate the low-SOC limp regime cleanly on its own
+(it also fires during the operator-presence-control shutdown
+sequence, when the BMS reacts to bus silence at any SOC), but it is
+strictly tighter than gating on `code 140` alone for limp detection.
+A robust limp indicator wants `(byte-7 bit 1) AND (drive-enabled per
+F100D0)`.
 
 
 ### Motor controller (Curtis 1238E, SA 0xCA)
