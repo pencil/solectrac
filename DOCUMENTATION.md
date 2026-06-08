@@ -575,7 +575,7 @@ default/zeroed broadcast and shows up in several distinct contexts:
   through shutdown.
 - **Active AC charging**: persistent `27 10` throughout.
 - **Persistent low-SOC limp** when SOC drops below 10 %. Motor RPM
-  clipped at ~1380 (vs ~2800 at full power in high gear) and the
+  clipped at ~1200 (vs ~2800 at full power in high gear) and the
   controller's effort-magnitude byte (FF21CA data[0]) clipped at 0x8B
   (54 % of full scale) regardless of pedal press — the Curtis MC obeys
   the announced 100 A discharge ceiling and reports the budget-capped

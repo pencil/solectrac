@@ -1696,6 +1696,8 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
         mot: dict = {"rpm_magnitude": int(state.motor_rpm_mag.value)}
         if state.motor_direction.value is not None:
             mot["direction"] = int(state.motor_direction.value)
+        if state.motor_throttle.value is not None:
+            mot["throttle_raw"] = int(state.motor_throttle.value)
         if state.motor_range.value is not None:
             rg = int(state.motor_range.value)
             mot["range"] = rg

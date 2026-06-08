@@ -180,7 +180,7 @@ struct MotorState {
     int16_t  rpm_signed    = 0;
     uint16_t rpm_magnitude = 0;
     int8_t   direction     = 0;
-    uint8_t  range_gear    = 1;
+    uint8_t  range    = 1;
     uint8_t  throttle_raw  = 0;
     int8_t   controller_temp_c = INT8_MIN;
     int8_t   motor_temp_c      = INT8_MIN;
@@ -476,7 +476,7 @@ void decodeCAN(uint32_t can_id, const uint8_t* raw, uint8_t len) {
         g_motor.rpm_magnitude      = (uint16_t)rpm_mag;
         g_motor.rpm_signed         = dir * rpm_mag;
         g_motor.direction          = dir;
-        g_motor.range_gear         = ((d[7] >> 4) & 0x0F) + 1;
+        g_motor.range         = ((d[7] >> 4) & 0x0F) + 1;
         g_motor.throttle_raw       = d[0];
         if (d[4]) g_motor.controller_temp_c = (int8_t)(d[4] - TEMP_OFFSET_C);
         if (d[5]) g_motor.motor_temp_c      = (int8_t)(d[5] - TEMP_OFFSET_C);
@@ -708,15 +708,15 @@ String buildJson(bool pretty = true, bool minimal = false) {
         if (!minimal) mot["rpm_signed"] = g_motor.rpm_signed;
         mot["rpm_magnitude"] = g_motor.rpm_magnitude;
         mot["direction"]     = g_motor.direction;
-        mot["range_gear"]    = g_motor.range_gear;
-        if (!minimal) mot["throttle_raw"] = g_motor.throttle_raw;
+        mot["range"]    = g_motor.range;
+        mot["throttle_raw"] = g_motor.throttle_raw;
         // Ground speed from RPM × range (Turf/Industrial tire calibration,
         // per Operator Manual p34; Agri tires would need different coeffs).
-        if (g_motor.range_gear >= 1 && g_motor.range_gear <= 3) {
+        if (g_motor.range >= 1 && g_motor.range <= 3) {
             static const float KMH_PER_RPM[3] = {
                 5.7f / 2800.0f, 8.6f / 2800.0f, 17.0f / 2800.0f
             };
-            float kmh = g_motor.rpm_magnitude * KMH_PER_RPM[g_motor.range_gear - 1];
+            float kmh = g_motor.rpm_magnitude * KMH_PER_RPM[g_motor.range - 1];
             addFloat(mot, "speed_kmh", kmh, 2);
             addFloat(mot, "speed_mph", kmh * 0.6213712f, 2);
         }
