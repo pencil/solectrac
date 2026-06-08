@@ -98,6 +98,7 @@
 #define PACK_VOLTAGE_OFFSET_LO_V 51.2f    // F100F3 variant 0x02 offset (low range, 51.2–76.7 V); variant byte acts as 9th MSB on data[1]
 #define RPM_BIAS                0x0C80   // raw u16 value at 0 RPM
 #define LIMIT_CURRENT_LSB_A     0.01f    // A per bit for F107 limits
+#define LIMIT_POWER_EXTRA_LSB_W 10.0f    // W per bit for F107 charge allowance above 100 A baseline
 #define CHARGER_I_LSB_A         0.1f     // A per bit for charger current
 #define PACK_CAPACITY_WH        25000.0f // nominal usable pack energy (Solectrac e25 spec)
 
@@ -165,6 +166,7 @@ struct BmsStateFlags {
 struct BmsLimits {
     float    discharge_a   = NAN;
     float    charge_a      = NAN;
+    float    charge_power_extra_w = NAN;
     uint8_t  mode          = 0;
     uint8_t  byte5         = 0;
     bool     valid         = false;
@@ -460,6 +462,7 @@ void decodeCAN(uint32_t can_id, const uint8_t* raw, uint8_t len) {
             }
             g_bms_limit.discharge_a = be16(d[0], d[1]) * LIMIT_CURRENT_LSB_A;
             g_bms_limit.charge_a    = be16(d[2], d[3]) * LIMIT_CURRENT_LSB_A;
+            g_bms_limit.charge_power_extra_w = be16(d[6], d[7]) * LIMIT_POWER_EXTRA_LSB_W;
             g_bms_limit.mode  = d[4];
             g_bms_limit.byte5 = d[5];
             g_bms_limit.valid = true;
@@ -709,6 +712,7 @@ String buildJson(bool pretty = true, bool minimal = false) {
         auto lim = doc["bms"]["limit"].to<JsonObject>();
         addFloat(lim, "discharge_a", g_bms_limit.discharge_a, 2);
         addFloat(lim, "charge_a",    g_bms_limit.charge_a,    2);
+        addFloat(lim, "charge_power_extra_w", g_bms_limit.charge_power_extra_w, 0);
         if (!minimal) {
             lim["mode"]  = g_bms_limit.mode;
             lim["byte5"] = g_bms_limit.byte5;

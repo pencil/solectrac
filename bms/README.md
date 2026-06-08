@@ -215,7 +215,8 @@ dual capture):
 | 2       | `00`               | `01`              | Static `01` once charger present         |
 | 3–5     | `00 00 00`         | `01 01 02`        | Status bits — set when charging engages  |
 | 6..7    | `00 00`            | `EE..F1, 00`      | **Pack-V LE u16, low byte first** — mirrors FF50 `data[1..2]`. With FF50 status (= mirror byte 5 here) selecting the encoding offset, this is pack terminal V = raw × 0.1 + offset (offset 51.2 V for status 0x02, 76.8 V for 0x03). |
-| 8..9    | `00 00`            | `C7, 00`          | **DC charge current LE u16, low byte first** — mirrors FF50 `data[3..4]`; raw × 0.1 A/bit (19.9 A at `C7 00`). |
+| 8       | `00`               | `C7`              | **DC charge current low byte** — mirrors FF50 `data[3]`; raw × 0.1 A/bit (19.9 A at `C7`). |
+| 9       | `00`               | dynamic           | UNKNOWN dynamic/status byte — not part of the charger-current mirror |
 | 10      | `00..D7`           | `00..D7`          | **1-Hz tick counter** (rolls 0x00..0xFF) |
 | 11      | `FF` → `53..56`    | `53..56`          | Slowly-varying u8 (semantics UNKNOWN; possibly time-remaining or temp) |
 | 12      | `FF`               | `00..FF` (varies) | UNKNOWN dynamic u8 (124 unique values in 144 polls) |
@@ -226,7 +227,7 @@ dual capture):
 | 25      | `FF`               | `FC`              | Status — `FF` no charger, `FC` charging  |
 | 26–30   | `FF`               | `FF`              | True sentinels (constant)                |
 
-**Bytes 5–9 mirror FF50 `data[0..4]`** — CONFIRMED by simultaneous
+**Bytes 5–8 mirror FF50 `data[0..3]`** — CONFIRMED by simultaneous
 diagnostic-port (0x4000) and broadcast (FF50E5) frame capture. The
 status byte (mirror byte 5) selects the pack-V encoding offset for the
 u16 LE at mirror bytes 6..7 (same low/high variant scheme as F100F3
@@ -457,7 +458,7 @@ capture):
 | `0x2830` top-1 max-temp tuple              | `F104F3` data[0] + data[2]           | Max module °C + 1-based probe number      |
 | `0x2838` top-1 min-temp tuple              | `F104F3` data[1] + data[3]           | Min module °C + 1-based probe number      |
 | `0x4000` byte 0 (active-alarm count, TENTATIVE) | `F108F3` (active fault bitmap)  | `F108F3` is the authoritative broadcast bitmap; `0x4000`'s relationship to alarms is now questioned — see the `0x4000` section above. |
-| `0x4000` bytes 5..9 (charger telemetry block) | `FF50E5` `data[0..4]`         | Variant-tagged pack V (LE u16, status-selected offset) + DC current (LE u16 × 0.1 A/bit) |
+| `0x4000` bytes 5..8 (charger telemetry block) | `FF50E5` `data[0..3]`         | Variant-tagged pack V (LE u16, status-selected offset) + DC current low byte (× 0.1 A/bit); `0x4000` byte 9 remains UNKNOWN |
 
 The diagnostic-port DIDs expose the **full** BMS internal state (cell
 extrema as top-4 sorted tuples, calibration tables, identity blocks,
@@ -920,8 +921,8 @@ Cell volt / Temp) that wasn't screenshotted.
   capture to anchor units.
 - **`0x4000` interpretation — UDAN `0x87` mapping is incorrect or partial.**
   The above capture shows `0x4000` is dominated by charger telemetry
-  (bytes 5..9 mirror FF50 `data[0..4]`, byte 10 is a 1-Hz tick, bytes
-  6/8/11/12 carry numeric measurements) rather than 31 severity-per-
+  (bytes 5..8 mirror FF50 `data[0..3]`, byte 10 is a 1-Hz tick, bytes
+  6/8/9/11/12 carry numeric or dynamic values) rather than 31 severity-per-
   category bytes. Open: identify the actual Alarm-state DID (candidates:
   UDAN tag `0x99` "Charging state / ChgState — UNKNOWN" might in fact
   point at `0x4000`, and the real Alarm DID is unpolled), and lock down

@@ -365,6 +365,7 @@ class State:
     # F107 BMS current limits
     limit_discharge_a: Channel = field(default_factory=Channel)
     limit_charge_a: Channel = field(default_factory=Channel)
+    limit_charge_power_extra_w: Channel = field(default_factory=Channel)
     limit_mode: Channel = field(default_factory=Channel)           # 0 chg / 1 drv
     # BMS-published SOC (F100F3 byte 4): % = raw × 0.4 − 0.8.
     bms_soc_pct: Channel = field(default_factory=Channel)
@@ -486,6 +487,7 @@ _NAME_TO_ATTR = {
     # F107 BMS limits
     "bms.limit.discharge_a": "limit_discharge_a",
     "bms.limit.charge_a": "limit_charge_a",
+    "bms.limit.charge_power_extra_w": "limit_charge_power_extra_w",
     "bms.limit.mode": "limit_mode",
     # FF50 charger
     "charger.status": "chgr_status",
@@ -913,6 +915,16 @@ def render_pack(state: State, mains_v: float, efficiency: float,
                          style=style),
                 ),
             )
+            p_extra = state.limit_charge_power_extra_w.value
+            if p_extra is not None:
+                extra_tag = (" (stale)" if state.limit_charge_power_extra_w.is_stale(now)
+                             else "")
+                extra_style = "green" if p_extra > 0 else "dim"
+                t.add_row(
+                    "chg +P",
+                    Text(f"{p_extra:.0f} W above 100 A baseline{extra_tag}",
+                         style=extra_style),
+                )
 
     if pack_v_ch.value is not None and pi is not None:
         # Display convention: positive = power into the pack (charging),
@@ -1702,12 +1714,15 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
             "awake":          int(bool(state.bms_contactors.value)),
         }
     if (state.limit_discharge_a.value is not None
-            or state.limit_charge_a.value is not None):
+            or state.limit_charge_a.value is not None
+            or state.limit_charge_power_extra_w.value is not None):
         lim: dict = {}
         if state.limit_discharge_a.value is not None:
             lim["discharge_a"] = round(state.limit_discharge_a.value, 1)
         if state.limit_charge_a.value is not None:
             lim["charge_a"] = round(state.limit_charge_a.value, 1)
+        if state.limit_charge_power_extra_w.value is not None:
+            lim["charge_power_extra_w"] = int(round(state.limit_charge_power_extra_w.value))
         bms_block["limit"] = lim
     if bms_block:
         out["bms"] = bms_block

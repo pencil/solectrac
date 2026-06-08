@@ -455,7 +455,7 @@ class BmsState:
     min_temps: list = field(default_factory=list)
 
     # Active-session status (DID 0x4000). Byte 0 is an alarm-count candidate;
-    # bytes 5..9 carry charger telemetry, so this is not a flat alarm array.
+    # bytes 5..8 carry charger telemetry, so this is not a flat alarm array.
     alarms_raw: bytes = b""
 
     # Charging cluster (0x0900 / 0x0901 / 0x0902)
@@ -1360,7 +1360,7 @@ function renderAlarms(hex) {
     : `<span class="badge warn">${alarmCount} tentative</span>`;
   const chargerStatus = bytes.length > 5 ? bytes[5] : null;
   const vRaw = leU16Bytes(bytes, 6);
-  const iRaw = leU16Bytes(bytes, 8);
+  const iRaw = bytes.length > 8 ? bytes[8] : null;
   const vOffset = chargerStatus === 0x02 ? 51.2 : chargerStatus === 0x03 ? 76.8 : null;
   const mirrorV = vRaw != null && vOffset != null ? (vRaw / 10) + vOffset : null;
   const mirrorA = iRaw != null ? iRaw / 10 : null;
@@ -1372,11 +1372,12 @@ function renderAlarms(hex) {
     ${row('Bytes 1..4 status', `<span class="hex">${statusBlock || dash}</span>`)}
     ${row('Charger status mirror (byte 5)', byteHex(chargerStatus))}
     ${row('Charger voltage mirror', mirrorV == null ? dash : fmtNum(mirrorV, 1, 'V'))}
-    ${row('Charger current mirror', mirrorA == null ? dash : fmtNum(mirrorA, 1, 'A'))}
+    ${row('Charger current mirror (byte 8)', mirrorA == null ? dash : fmtNum(mirrorA, 1, 'A'))}
+    ${row('Byte 9', byteHex(bytes.length > 9 ? bytes[9] : null))}
     ${row('Byte 10 counter/status', byteHex(bytes.length > 10 ? bytes[10] : null))}
     ${row('Tail 26..30', tailSentinel ? '<span class="badge ok">0xFF sentinels</span>' : '<span class="badge warn">not all 0xFF</span>')}
   </table>
-  <div class="sub" style="margin-top:8px;">0x4000 is mixed status/charger telemetry; only byte 0 is an alarm-count candidate.</div>
+  <div class="sub" style="margin-top:8px;">0x4000 is mixed status/charger telemetry; only byte 0 is an alarm-count candidate. Byte 9 is unknown and is not part of the charger-current mirror.</div>
   <div class="hex" style="margin-top:8px;">${hexSpaced(hex)}</div>`;
 }
 

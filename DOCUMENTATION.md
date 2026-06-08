@@ -534,17 +534,17 @@ Periodic frame; byte 0 carries a state-machine vocabulary:
 Vendor GUI implies more states exist (Calibrating, Charging,
 Discharging, Fault, Sleep); not observed in captured data.
 
-#### F107F3 — BMS limits — TENTATIVE
+#### F107F3 — BMS limits — PARTIALLY CONFIRMED
 
 Layout matches the standard J1939 limits-frame template:
 
 | Bytes | Likely meaning                              | Observed                                                  |
 |-------|---------------------------------------------|-----------------------------------------------------------|
 | 0..1  | Discharge current limit, 0.01 A/bit         | 0x38A4 (145.0 A) or 0x2710 (100.0 A) — see below          |
-| 2..3  | Charge current limit, 0.01 A/bit            | 0x2710 (100.0 A) typically; 0x3070 (124.0 A) seen driving |
+| 2..3  | Charge current limit, 0.01 A/bit            | 0x2710 (100.0 A) typically; 0x3070 (124.0 A) seen driving; 0x32C8 (130.0 A) seen during charge startup/transition |
 | 4     | Companion flag to bytes 0..1                | 0x01 paired with 145.0 A; 0x00 paired with 100.0 A         |
 | 5     | Pack-voltage echo (non-linear, banded)      | Live banded values when byte 4 = 0x01; 0x00 when byte 4 = 0x00 (see below) |
-| 6..7  | (unknown)                                   | 0x0000                                                    |
+| 6..7  | Charge-power allowance above 100 A baseline, BE u16 × 10 W | 0x0000 when charge limit is 100 A; otherwise tracks `(charge_limit_a - 100 A) × pack_voltage_v` |
 
 Bytes 0..1 stay pinned at 145.0 A throughout drive captures even when
 actual pack current on F100F3 peaks above 230 A during high-gear
@@ -556,8 +556,15 @@ Bytes 2..3 are not always 0x2710 as previously noted; at least one
 driving capture shows 0x3070 (124.0 A), so the slot does carry
 meaningful values rather than being a permanent sentinel.
 
-**Two F107F3 patterns.** The whole frame snaps between exactly two stable
-shapes:
+Bytes 6..7 are now confirmed as a charge-power allowance above the 100 A
+baseline. Across 558,309 paired F107/F100 frames in 66 captures, including
+the 14-hour 9.6%-to-99.2% charge capture, the raw value matches
+`(charge_limit_a - 100 A) × pack_voltage_v / 10` within 1 raw count. This
+explains the formerly "unknown" nonzero low byte in the `38 A4 30 70 01 XX
+00 YY` drive pattern and the startup/transition rows in charging captures.
+
+**Common F107F3 patterns.** The frame has two dominant steady-state shapes
+plus startup/transition values:
 
 | Pattern                            | Bytes 0..1 | Byte 4 | Byte 5 |
 |------------------------------------|------------|--------|--------|
@@ -573,7 +580,8 @@ default/zeroed broadcast and shows up in several distinct contexts:
   settled `38 A4 30 70 01 XX 00 YY`.
 - **Key-off / R1 N transition**: snaps back to `27 10` and stays there
   through shutdown.
-- **Active AC charging**: persistent `27 10` throughout.
+- **Active AC charging**: after startup/transition rows, persistent `27 10`
+  throughout normal charge.
 - **Persistent low-SOC limp** when SOC drops below 10 %. Motor RPM
   clipped at ~1200 (vs ~2800 at full power in high gear) and the
   controller's effort-magnitude byte (FF21CA data[0]) clipped at 0x8B
@@ -908,8 +916,8 @@ Proprietary B frame from the on-board charger.
 | Byte | data[]  | Meaning                                                |
 |------|---------|--------------------------------------------------------|
 | 1    | data[0] | **Status / mode**                                      |
-| 2..3 | data[1..2] LE | Output voltage: V = raw × 0.1 + 76.8 (only valid while status = 0x03) |
-| 4..5 | data[3..4] LE | Output current: A = raw × 0.1     (only valid while status = 0x03) |
+| 2..3 | data[1..2] LE | Output voltage: V = raw × 0.1 + status-selected offset (valid while status is 0x02 or 0x03) |
+| 4..5 | data[3..4] LE | Output-current raw. In active charging `data[4] = 0`, so current = `data[3] × 0.1 A`; nonzero `data[4]` marks idle/self-test artifacts |
 
 **The status byte is dual-purpose: it indicates that the OBC is
 actively delivering charge AND selects the pack-V encoding offset for
@@ -924,8 +932,11 @@ Status byte vocabulary:
 | 0x02       | **Actively delivering charge, LO pack-V encoding** — `data[1..2]` = pack V × 0.1 + 51.2 V (covers 51.2..76.7 V)  |
 | 0x03       | **Actively delivering charge, HI pack-V encoding** — `data[1..2]` = pack V × 0.1 + 76.8 V (covers 76.8..102.3 V) |
 
-`data[3..4]` LE = DC charger output current × 0.1 A/bit, no offset —
-CONFIRMED in both 0x02 and 0x03.
+`data[3]` = DC charger output current × 0.1 A/bit, no offset, while
+status is 0x02/0x03 and `data[4] = 0x00` — CONFIRMED in both 0x02 and
+0x03. The combined `data[3..4]` LE value is still kept as a raw diagnostic
+field because `data[4]` carries nonzero sentinel/status values outside
+active charging.
 
 The encoding for `data[1..2]` is anchored by linear regression across a
 multi-hour L1 charge in status 0x02: slope 0.099 V/LSB, intercept
@@ -935,8 +946,9 @@ yields slope 0.1024 V/LSB, intercept 77.04 V (R² = 0.9856) — the HI
 variant. The 0x02 → 0x03 transition fires when pack V crosses
 ~76.8 V; it is not a CC→CV phase change.
 
-The 0x4000 DID mirrors FF50 `data[0..4]` at its bytes 5..9 during
-charging — see `bms/README.md` §`0x4000`.
+The 0x4000 DID mirrors FF50 `data[0..3]` at its bytes 5..8 during
+charging; 0x4000 byte 9 is a separate unknown dynamic/status byte — see
+`bms/README.md` §`0x4000`.
 
 **Charge-current profile is constant-power, not constant-current** —
 CONFIRMED, but unrelated to the status byte. Across a full L1 charge
@@ -1301,8 +1313,10 @@ Code 51 is listed out of numeric order in the manual.
   know it isn't a single bit.
 - **F104 byte-level decode.** Pack temperature min/max summary,
   analogous to F102 for cells. Not parsed.
-- **F106 / F107 byte-level decode.** Running-mode vocabulary and
-  limits-frame layout are partially mapped but most bytes UNKNOWN.
+- **F106 / F107 byte-level decode.** F107 current limits and bytes 6..7 are
+  now decoded; byte 5 remains a banded pack-voltage echo with an unknown
+  encoding formula. F106 running-mode vocabulary is still only partially
+  mapped.
 - **Full running-mode enumeration.** Vendor GUI implies at least
   Calibrating, Charging, Discharging, Fault, Sleep beyond the
   init/standby/ready states observed.
