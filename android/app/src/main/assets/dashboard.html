@@ -73,6 +73,7 @@ h3{font-size:.68em;text-transform:uppercase;letter-spacing:.1em;color:#757575;ma
 <script>
 const f=(v,d=1)=>v==null?'–':v.toFixed(d);
 const fi=v=>v==null?'–':(v>=0?'+':'')+v.toFixed(1);
+const ftemp=c=>c==null?'–':Math.round(c*9/5+32)+'°F ('+c+'°C)';
 function kv(k,v){return'<div class="kv"><span class="k">'+k+'</span><span>'+v+'</span></div>';}
 var MC_FAULTS={
   12:'Controller Over Current',13:'Current Sensor Fault',
@@ -195,14 +196,14 @@ function update(d){
     kv('Max',(pc.max_mv!=null?(pc.max_mv/1000).toFixed(3):'–')+' V (#'+(pc.max_n||'?')+')')+
     kv('Min',(pc.min_mv!=null?(pc.min_mv/1000).toFixed(3):'–')+' V (#'+(pc.min_n||'?')+')')+
     kv('Spread',pc.spread_mv!=null?(pc.spread_mv+' mV'+(pc.max_mv&&pc.min_mv?' ('+(pc.spread_mv/((pc.max_mv+pc.min_mv)/2)*100).toFixed(2)+'%)':'')):'–')+
-    kv('Temp max',pt.max_c!=null?pt.max_c+'°C':'–')+
-    kv('Temp min',pt.min_c!=null?pt.min_c+'°C':'–')+
+    kv('Temp max',ftemp(pt.max_c))+
+    kv('Temp min',ftemp(pt.min_c))+
     '</div>'+
     '<div class="card"><h3>Motor</h3>'+
     kv('RPM',m.rpm_magnitude!=null?m.rpm_magnitude:'–')+
     kv('Range','R'+(m.range_gear||'?'))+
-    kv('MC Temp',m.controller_temp_c!=null?m.controller_temp_c+'°C':'–')+
-    kv('Motor Temp',m.motor_temp_c!=null?m.motor_temp_c+'°C':'–')+
+    kv('MC Temp',ftemp(m.controller_temp_c))+
+    kv('Motor Temp',ftemp(m.motor_temp_c))+
     '</div>';
   var flagDefs=[
     ['Awake',bst.awake],['Drive Mode',bst.drive_mode],
