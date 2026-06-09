@@ -678,7 +678,7 @@ String buildJson(bool pretty = true, bool minimal = false) {
         st["output_enable"]  = g_bms_state.output_enable  ? 1 : 0;
         st["main_contactor"] = g_bms_state.main_contactor ? 1 : 0;
         st["operating"]      = g_bms_state.operating      ? 1 : 0;
-        st["standby"]        = g_bms_state.standby        ? 1 : 0;
+        st["plug"]           = g_bms_state.standby        ? 1 : 0;
         st["charging"]       = g_bms_state.charging       ? 1 : 0;
         st["charger_present"]= g_bms_state.charger_present? 1 : 0;
         st["drive_mode"]     = g_bms_state.drive_mode     ? 1 : 0;

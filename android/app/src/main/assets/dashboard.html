@@ -261,8 +261,8 @@ function update(d){
     kv('Motor Temp',ftemp(m.motor_temp_c))+
     '</div>';
   var flagDefs=[
-    ['Awake',bst.awake],['Drive Mode',bst.drive_mode],
-    ['Operating',bst.operating],['Plug',bst.plug],
+    ['Awake',bst.awake],['Motor',bst.drive_mode],
+    ['BMS',bst.operating],['Plug',bst.plug],
     ['Charging',bst.charging],
     ['Output Enabled',bst.output_enable],['Main Contactor',bst.main_contactor]
   ];
@@ -317,4 +317,3 @@ if(window.DashboardBridge){
 </script>
 </body>
 </html>
-   
