@@ -1,9 +1,9 @@
 # CAN bus documentation for Solectrac tractors
 
-CAN protocol and hardware documentation for a Solectrac electric
-tractor. All decode information is derived from captured CAN traffic, vendor
-manual tables, the COBO cluster datasheet, the "BMS Update" document, the
-Solectrac Parts Catalog (e25), and live injection tests on the tractor.
+CAN protocol and hardware documentation for a Solectrac electric tractor. All
+decode information is derived from captured CAN traffic, vendor manual tables,
+the COBO cluster datasheet, the "BMS Update" document, the Solectrac Parts
+Catalog (e25), and live injection tests on the tractor.
 
 Confidence markers used throughout:
 
@@ -33,11 +33,9 @@ Confidence markers used throughout:
 
 The tractor is a **Solectrac 25G** (non-HST variant).
 
-"Pack" refers to the tractor's traction battery — the high-voltage
-lithium-ion battery that powers the motor, as distinct from the
-**12 V / 20 Ah accessory battery** that runs the cluster and lights.
-The accessory rail is fed by a **500 W 72 V → 12 V DC-DC converter**
-off the pack (parts catalog Table 65).
+"Pack" refers to the tractor's traction battery — the high-voltage lithium-ion
+battery that powers the motor, as distinct from the 12 V accessory battery that
+runs the cluster and lights.
 
 | Property                  | Brochure                              | Operator manual (CET)                              | Service manual              | BMS GUI                 | Observed |
 |---------------------------|---------------------------------------|----------------------------------------------------|-----------------------------|-------------------------|----------|
@@ -47,7 +45,7 @@ off the pack (parts catalog Table 65).
 | Cells in series           | —                                     | —                                                  | 20 (one per module)         | 20                      | 20 (CAN captures) |
 | Charge rate (L1, 110 V)   | ~1.2 kW AC (implied by 11 hr 20→80 %) | —                                                  | —                           | —                       | 1475 W ± 3 W DC, constant 10–95 % SOC |
 | Charging temp range       | 0–40 °C                               | —                                                  | —                           | —                       | —        |
-| Charging time             | 5.5 hr (Lvl 2, 220 VAC, 20→80%); 11 hr (Lvl 1, 110 VAC) | 8 hr (0→100%, on-board charger)  | —                           | —                       | —        |
+| Charging time             | 5.5 hr (Lvl 2, 220 VAC, 20→80%); 11 hr (Lvl 1, 110 VAC) | 8 hr (0→100%, on-board charger)  | —                           | —                       | ~14 hr (L1 120 VAC, 10→100 % SOC) |
 | Charging-target voltage   | 83 V                                  | 82 VDC (§9.1)                                      | —                           | —                       | —        |
 | Cluster supply            | —                                     | 12 V / 20 Ah aux battery                           | 12 V (accessory, not pack)  | —                       | —        |
 | Cycle life                | 2500 cycles @ 25 °C                   | 2500 cycles @ 25 °C                                | —                           | —                       | —        |
@@ -78,9 +76,6 @@ the 20-series × 4-module × 5-parallel topology:
   this tractor's installed SKU. The operator manual's example
   faceplate (§1.2) and the BMS GUI both describe the same SKU.
 
-The `solectrac-analyze.py` / `solectrac-stream.py` Wh display uses
-72 V × 300 Ah = 21.6 kWh, which matches the faceplate exactly.
-
 **Pack vendor is Soundon; UDAN is the BMS firmware/tool vendor.** The battery
 faceplate is laser-etched **Soundon New Energy Technology Co., Ltd.** (Chinese
 NMC pack manufacturer). An Escorts-branded white sticker rides on top: Escorts
@@ -88,38 +83,29 @@ Kubota Limited (Farmtrac's parent in India, Solectrac's US distribution brand)
 buys the pack from Soundon, applies its own QR-coded serial ("Escorts 72V300Ah
 NO.079"), and ships it into Farmtrac/Solectrac tractors.
 
-The service manual's BMS troubleshooting section delegates all
-live-data inspection to a host-side application called **UDAAN**
-(referenced repeatedly: "Connect UDAAN and check the minimum cell
-voltage", etc.). UDAAN has been identified as the **UDAN iBMS Upper
-Utility** from **Anhui UDAN Technology Co., Ltd.** — a Chinese BMS
-firmware/diagnostic-tool vendor. The tool is publicly downloadable
-Windows software (CAN @ 250 kbit/s, supports cheap CANalyst-II / PCAN
-/ USBCAN dongles). The service manual itself contains no byte-level
-payload tables for the BMS broadcast frames, but UDAN's tool has a
-`Comm. Message` recording feature that captures the raw CAN exchange
-alongside a labeled Excel export of every System Overview UI field —
-running both simultaneously produces a time-aligned raw-CAN +
-labeled-field log, i.e. an empirical DBC. See the open-questions
-section for the practical decode path.
+The service manual's BMS troubleshooting section delegates all live-data
+inspection to a host-side application called **UDAN** (referenced repeatedly:
+"Connect UDAN and check the minimum cell voltage", etc.). UDAN has been
+identified as the **UDAN iBMS Upper Utility** from **Anhui UDAN Technology Co.,
+Ltd.** — a Chinese BMS firmware/diagnostic-tool vendor. The tool is publicly
+downloadable Windows software and can be connected via CAN @ 250 kbit/s with
+hardware such as the CANalyst-II.
 
-**BMS firmware project identification.** When connected via UDAN, the
-BMS reports its loaded project file as **`C121.082.001.01`** with the
-display name **`印度索伦72V300Ah原版`** ("India Solectrac 72V 300Ah
-Original Version"). This is the UDAN-side project key for the
-firmware/parameter set on this tractor.
+**BMS firmware project identification.** When connected via UDAN, the BMS
+reports its loaded project file as **`C121.082.001.01`** with the display name
+**`印度索伦72V300Ah原版`** ("India Solectrac 72V 300Ah Original Version"). This
+is the UDAN-side project key for the firmware/parameter set on this tractor.
 
-**BMS field connector** is part number **`RT061412SNHEC03`** (12-pin
-circular). Per the manual's DTC 125 troubleshooting (page 30 of the
-battery section), main vehicle CAN exits on **pins D and E** — a 60 Ω
-resistance test across D↔E (two 120 Ω terminators in parallel)
-confirms a healthy bus. Pins A/B/C are 12 V power rails: **B is GND**,
-A and C are switched/unswitched +12 V (DTCs 140/142/143/144 all
-prescribe "12 V between A↔B and C↔B" as the integrity check). The
-remaining field-connector pins F/G/H/J/K/L are unassigned in
-troubleshooting steps and are the most likely physical home of the
-**second (diagnostics) CAN pair** — see "Second 2-pin CAN port" under
-the CAN topology section.
+**BMS field connector** is part number **`RT061412SNHEC03`** (12-pin circular).
+Per the manual's DTC 125 troubleshooting (page 30 of the battery section), main
+vehicle CAN exits on **pins D and E** — a 60 Ω resistance test across D↔E (two
+120 Ω terminators in parallel) confirms a healthy bus. Pins A/B/C are 12 V
+power rails: **B is GND**, A and C are switched/unswitched +12 V (DTCs
+140/142/143/144 all prescribe "12 V between A↔B and C↔B" as the integrity
+check). The remaining field-connector pins F/G/H/J/K/L are unassigned in
+troubleshooting steps and are the most likely physical home of the **second
+(diagnostics) CAN pair** — see "Second 2-pin CAN port" under the CAN topology
+section.
 
 Schematic 5.7 in the FT 25G service manual uses BMS-internal terminal letters
 that do **not** map 1:1 to the field connector — it shows main CAN on pins H/J
@@ -128,40 +114,25 @@ BMS DEBUG CONNECTOR PIN-1/PIN-2". The schematic's H/J and the field connector's
 D/E refer to the same physical bus; the two pin-naming conventions are
 independent.
 
-100 % SOC reference set (5 captures at full charge):
-
-| Condition                  | 20 × mean cell mV |
-|----------------------------|-------------------|
-| Idle, no charger           | 83.29 V           |
-| Charger inserted, no AC    | 83.31 V           |
-| Full throttle (neutral)    | 83.22 V           |
-| Accel/decel (neutral)      | 83.18 V           |
-| Full throttle + hydraulics | 83.06 V           |
-
-The 0.25 V sag from idle to peak load is the cleanest pack-V load
-response observed.
-
-**HV power path.** The pack feeds the traction inverter through the
-**Albright SW200** main contactor (service manual §4.2.3) protected
-by a **350 A battery cut-off fuse** (§4.3.5; parts catalog Table 60
-lists 355 A — same component, rounding). A separate **discrete
-hydraulic contactor** (Table 60) gates HV between the pack and the
-BLDC hydraulic pump motor; its coil is energized from the main
-E-Controller's key-switch wire. Neither contactor is on the CAN
-bus, which is part of why hydraulic activity produces no CAN
-signature (the other part being that the e-hydraulic controller has
-no CAN pins at all — see "What is NOT on this bus").
+**HV power path.** The pack feeds the traction inverter through the **Albright
+SW200** main contactor (service manual §4.2.3) protected by a **350 A battery
+cut-off fuse** (§4.3.5; parts catalog Table 60 lists 355 A — same component,
+rounding). A separate **discrete hydraulic contactor** (Table 60) gates HV
+between the pack and the BLDC hydraulic pump motor; its coil is energized from
+the main E-Controller's key-switch wire. Neither contactor is on the CAN bus,
+which is part of why hydraulic activity produces no CAN signature (the other
+part being that the e-hydraulic controller has no CAN pins at all — see "What
+is NOT on this bus").
 
 
 ## CAN bus topology
 
 Single shared CAN bus at 250 kbaud. The ODB-2 diagnostic port we capture from
-is on the same bus as the ECUs that run the tractor — it is not a
-separate diagnostic segment.
+is on the same bus as the ECUs that run the tractor — it is not a separate
+diagnostic segment.
 
-Per **schematic 5.10** in the FT 25G service manual, the bus has
-**exactly four** CAN nodes, with terminators at the two physical ends
-of the linear bus:
+Per **schematic 5.10** in the FT 25G service manual, the bus has **exactly
+four** CAN nodes, with terminators at the two physical ends of the linear bus:
 
     1. MOTOR CONTROLLER (SA 0xCA) — Curtis controller, pins 23/35;
                                     120 Ω terminator at this end
@@ -177,17 +148,17 @@ of the linear bus:
                                     cluster, pins 35/36; 120 Ω terminator
                                     at this end
 
-The **OBD-II diagnostic connector** is a passive tap on the same bus —
-not an extra node. It follows standard OBD-II HS-CAN pinout with four
-cavities populated (verified by physical inspection):
+The **OBD-II diagnostic connector** is a passive tap on the same bus — not an
+extra node. It follows standard OBD-II HS-CAN pinout with four cavities
+populated (verified by physical inspection):
 
 - **Pin 4** — chassis ground
 - **Pin 6** — CAN_H (yellow 0.75 mm²)
 - **Pin 14** — CAN_L (green 0.75 mm²)
 - **Pin 16** — +12 V battery
 
-The older Solectrac topology diagram's "DB9" connector label is a
-mislabel — it's the OBD-II port.
+The older Solectrac topology diagram's "DB9" connector label is a mislabel —
+it's the OBD-II port.
 
 ```
    [120 Ω]─┬────────┬────────┬────────┬────────┬─[120 Ω]
@@ -205,28 +176,27 @@ mislabel — it's the OBD-II port.
 
 ### What is NOT on this bus
 
-**The E-Hydraulic Controller has no CAN pins.** Schematic 5.11 in the
-service manual shows it driven by a discrete control interface:
-LOW/HIGH speed-selection switch, hydraulic-motor on/off switch,
-throttle wiper potentiometer (10 kΩ), Hall/encoder, key-switch wire
-from the main E-Controller (`KS01A`), and three-phase U/V/W out to a
-BLDC pump motor. It is not a CAN-speaking ECU on this vehicle.
+**The E-Hydraulic Controller does not broadcast on the CAN bus.** Schematic
+5.11 in the service manual shows it driven by a discrete control interface:
+LOW/HIGH speed-selection switch, hydraulic-motor on/off switch, throttle wiper
+potentiometer (10 kΩ), Hall/encoder, key-switch wire from the main E-Controller
+(`KS01A`), and three-phase U/V/W out to a BLDC pump motor. It is not a
+CAN-speaking ECU on this vehicle.
 
-The parts catalog identifies the e-hydraulic as a **Kelly KLS7212M /
-KLS7218** controller, which is a CAN-capable family. However, no CAN
-data has been found that is related to the hydraulic system.
+The parts catalog identifies the e-hydraulic as a **Kelly KLS7212M / KLS7218**
+controller, which is a CAN-capable family. However, no CAN data has been found
+that is related to the hydraulic system.
 
-The rear 3-point hitch, lift, power steering, and remote hydraulics
-are fully mechanical-hydraulic with no electrical interface (per the
-manual's Hydraulic System chapter, pp 295-319 — a fully mechanical
-Escorts design with draft + position levers, rocker top-link spring,
-mechanical position-feedback cam, manual auxiliary spool, and no
-solenoids/sensors/transducers anywhere). The PTO shaft speed is
-purely mechanical, but PTO **engagement** uses a **wet clutch**
-controlled by a dashboard switch (service manual §1.4, switch C:
-"PTO Wet Clutch"); the wet clutch requires hydraulic pressure from
-the e-hydraulic pump to engage and oil flow for cooling, which is
-why the pump must be on for PTO operation.
+The rear 3-point hitch, lift, power steering, and remote hydraulics are fully
+mechanical-hydraulic with no electrical interface (per the manual's Hydraulic
+System chapter, pp 295-319 — a fully mechanical Escorts design with draft +
+position levers, rocker top-link spring, mechanical position-feedback cam,
+manual auxiliary spool, and no solenoids/sensors/transducers anywhere). The PTO
+shaft speed is purely mechanical, but PTO **engagement** uses a **wet clutch**
+controlled by a dashboard switch (service manual §1.4, switch C: "PTO Wet
+Clutch"); the wet clutch requires hydraulic pressure from the e-hydraulic pump
+to engage and oil flow for cooling, which is why the pump must be on for PTO
+operation.
 
 ### Bus termination
 
@@ -238,34 +208,31 @@ tolerate the 3-terminator config and captures are clean.
 
 ### Second 2-pin CAN port — BMS diagnostics bus — CONFIRMED
 
-A separate 2-pin connector on the tractor carries the **BMS
-diagnostics bus** — shown on schematic 5.7 as `CANDE-H` / `CANDE-L`,
-labelled "TO BMS DEBUG CONNECTOR PIN-1 / PIN-2". The BMS exposes two
-CAN pairs: the main vehicle bus (above) and this diagnostics pair. It
-is the channel the host-side **UDAAN** tool consumes.
+A separate 2-pin connector on the tractor carries the **BMS diagnostics bus** —
+shown on schematic 5.7 as `CANDE-H` / `CANDE-L`, labelled "TO BMS DEBUG
+CONNECTOR PIN-1 / PIN-2". The BMS exposes two CAN pairs: the main vehicle bus
+(above) and this diagnostics pair. It is the channel the host-side **UDAN**
+tool consumes.
 
-**Resistance confirms it is a separate, BMS-only bus.** Measured
-key-off with nothing plugged in, the 2-pin connector reads **120 Ω
-across the pair** — i.e. exactly one 120 Ω terminator on that pair.
-If the 2-pin were a tap onto the main bus, it would read the same
-as any other tap on the main bus (40 Ω at OBD-II in the same
-conditions, §"Bus termination" above). Unplugging the BMS field
-connector causes the 2-pin reading to go **open** (overload), which
-proves the only node electrically present on that pair is the BMS —
-no other module in the harness taps it. The single 120 Ω is therefore
-the BMS's internal terminator on its diagnostics pair, and the 2-pin
-connector is its physical termination at the harness end (no second
-terminator until a tool is plugged in). All consistent with the
-schematic 5.7 `CANDE-H`/`CANDE-L` diagnostics-pair interpretation.
+**Resistance confirms it is a separate, BMS-only bus.** Measured key-off with
+nothing plugged in, the 2-pin connector reads 120 Ω across the pair. If the
+2-pin were a tap onto the main bus, it would read the same as any other tap on
+the main bus (40 Ω at OBD-II in the same conditions, §"Bus termination" above).
+Unplugging the BMS field connector causes the 2-pin reading to go **open**
+(overload), which proves the only node electrically present on that pair is the
+BMS — no other module in the harness taps it. The single 120 Ω is therefore the
+BMS's internal terminator on its diagnostics pair, and the 2-pin connector is
+its physical termination at the harness end (no second terminator until a tool
+is plugged in). All consistent with the schematic 5.7 `CANDE-H`/`CANDE-L`
+diagnostics-pair interpretation.
 
-**Traffic content matches the same picture.** Time-synced dual-bus
-captures (diagnostics + main) show the diagnostics pair carries only
-UDS traffic to the BMS (request `0x740`, response `0x748`) plus a
-single all-zero `0x7FD` frame at each key-on (origin UNKNOWN); zero
-J1939 broadcasts appear on it. The main vehicle bus carries zero UDS
-frames — `0x740`/`0x748` are exclusive to the diagnostics pair. UDS
-responses only occur with the key on, and stop a few seconds after
-key-off. Full UDS protocol, DID map, and bootstrap details are in
+**Traffic content matches the same picture.** Time-synced dual-bus captures
+(diagnostics + main) show the diagnostics pair carries only UDS traffic to the
+BMS (request `0x740`, response `0x748`) plus a single all-zero `0x7FD` frame at
+each key-on (origin UNKNOWN); zero J1939 broadcasts appear on it. The main
+vehicle bus carries zero UDS frames — `0x740`/`0x748` are exclusive to the
+diagnostics pair. UDS responses only occur with the key on, and stop a few
+seconds after key-off. Full UDS protocol, DID map, and bootstrap details are in
 [`bms/README.md`](bms/README.md).
 
 ## J1939 decodings
@@ -305,10 +272,10 @@ request from the vehicle-controller 0xF4 to the on-board charger 0xE5).
 ### Source-address map
 
 Every J1939 frame's 29-bit CAN ID ends in an 8-bit source address (SA)
-identifying which node on the bus sent it. The table below pairs each
-SA seen in our captures with the ECU we believe is behind it and the
-frames it emits, and is the basis for the per-source decoder dispatch
-elsewhere in this document.
+identifying which node on the bus sent it. The table below pairs each SA seen
+in our captures with the ECU we believe is behind it and the frames it emits,
+and is the basis for the per-source decoder dispatch elsewhere in this
+document.
 
 | SA   | Role                                  | Frames observed                                             |
 |------|---------------------------------------|--------------------------------------------------------------|
@@ -322,8 +289,8 @@ elsewhere in this document.
 
 ### BMS (SA 0xF3)
 
-All scalings derived empirically. Byte numbering is 1-based with
-explicit `data[N]` (0-based) annotations where helpful.
+All scalings derived empirically. Byte numbering is 1-based with explicit
+`data[N]` (0-based) annotations where helpful.
 
 #### F113..F13C — Per-cell voltages — CONFIRMED
 
@@ -335,11 +302,10 @@ explicit `data[N]` (0-based) annotations where helpful.
     F117 = cells 16..19
     F118..F13C reserved (cells 20..167); 0xFFFF / 0 sentinel on this pack.
 
-Per-PGN cell index mapping cross-validated by Pearson correlation of
-each aligned u16 BE slot against the 20 cell mV values returned by
-DID `0x0101` over a drive cycle (n=794 paired samples, pack delta
-≥5 mV throughout, peak 11 mV): all 20 slots picked their natural-order
-PGN slot as the top match.
+Per-PGN cell index mapping cross-validated by Pearson correlation of each
+aligned u16 BE slot against the 20 cell mV values returned by DID `0x0101` over
+a drive cycle (n=794 paired samples, pack delta ≥5 mV throughout, peak 11 mV):
+all 20 slots picked their natural-order PGN slot as the top match.
 
 Cells read ~3.6–3.7 V at ~40 % SOC, ~4.16 V/cell at 100 %.
 
@@ -352,8 +318,8 @@ Cells read ~3.6–3.7 V at ~40 % SOC, ~4.16 V/cell at 100 %.
     ...
     F15E = channels 72..79
 
-Only the first 7 channels are populated on this pack; the rest are
-0xFF (not present).
+Only the first 7 channels are populated on this pack; the rest are 0xFF (not
+present).
 
 #### F102F3 — Cell min/max summary — CONFIRMED (max/min/spread)
 
@@ -365,19 +331,17 @@ Only the first 7 channels are populated on this pack; the rest are
 | 6       | min-cell **number, 1-based**                       |
 | 8       | status/flag bits (semantics TENTATIVE)             |
 
-**Indexing convention:** byte 5/6 use 1-based cell numbers as the BMS
-GUI displays them ("Max cell #19"). The parser's `cell_index` in
-`cells.csv` is 0-based — subtract 1 to map. Cross-validated against
-contemporaneous per-cell PGN snapshots in
-`recorded-data/charging.csv`.
+**Indexing convention:** byte 5/6 use 1-based cell numbers as the BMS GUI
+displays them ("Max cell #19"). The parser's `cell_index` in `cells.csv` is
+0-based — subtract 1 to map. Cross-validated against contemporaneous per-cell
+PGN snapshots in `recorded-data/charging.csv`.
 
-When several cells tie at the max, the BMS reports the lowest-index
-winner.
+When several cells tie at the max, the BMS reports the lowest-index winner.
 
-The reported `min_mv` is occasionally 1 mV higher than the actual
-lowest voltage in the per-cell snapshot taken alongside it — likely a
-timing-skew or filtering artifact in the BMS. The *index* still
-correctly identifies the right cell.
+The reported `min_mv` is occasionally 1 mV higher than the actual lowest
+voltage in the per-cell snapshot taken alongside it — likely a timing-skew or
+filtering artifact in the BMS. The *index* still correctly identifies the right
+cell.
 
 Smallest spread observed across all captures: 3 mV (124 frames in
 `recorded-data/charging.csv`).
@@ -403,34 +367,33 @@ LSB in both:
 | 0x03 (high) | V = data[1] × 0.1 + 76.8 | 76.8 – 102.3 V |
 | 0x02 (low)  | V = data[1] × 0.1 + 51.2 | 51.2 – 76.7 V |
 
-`76.8 − 51.2 = 25.6 = 256 × 0.1`, so the variant byte effectively acts
-as a 9th high-order bit on `data[1]`, giving a combined dynamic range
-of 51.2 – 102.3 V. The BMS switches variants automatically as pack V
-crosses the 76.8 V threshold — observed at lower SOC (every soc-50,
-soc-60, and load-sagged soc-70 capture is variant 0x02; soc-70-idle is
-still variant 0x03; soc-80+ are all variant 0x03), and transiently
-during heavy-load sag or active charging even at higher SOC.
+`76.8 − 51.2 = 25.6 = 256 × 0.1`, so the variant byte effectively acts as a 9th
+high-order bit on `data[1]`, giving a combined dynamic range of 51.2 – 102.3 V.
+The BMS switches variants automatically as pack V crosses the 76.8 V threshold
+— observed at lower SOC (every soc-50, soc-60, and load-sagged soc-70 capture
+is variant 0x02; soc-70-idle is still variant 0x03; soc-80+ are all variant
+0x03), and transiently during heavy-load sag or active charging even at higher
+SOC.
 
-**Pack terminal voltage** anchored by linear regression of data[1]
-versus 20 × mean(cell mV) across all 70 captures, separately for each
-variant:
+**Pack terminal voltage** anchored by linear regression of data[1] versus 20 ×
+mean(cell mV) across all 70 captures, separately for each variant:
 
 | Variant | Fit | n | RMSE |
 |---------|-----|---|------|
 | 0x03 | V = 0.0998 × raw + 76.82 | 13,370 | 0.028 V |
 | 0x02 | V = 0.1003 × raw + 51.13 | 14,127 | 0.033 V |
 
-Max residual under 1 V in both, attributable to high-current
-transients where pack V swings faster than the BMS broadcasts.
-Cross-checked against the FF50 charger frame which uses the
-variant-0x03 encoding (R² = 0.986 across 2863 active-charging frames).
+Max residual under 1 V in both, attributable to high-current transients where
+pack V swings faster than the BMS broadcasts. Cross-checked against the FF50
+charger frame which uses the variant-0x03 encoding (R² = 0.986 across 2863
+active-charging frames).
 
-**Pack current** is signed BE-16 with a fixed bias of 0x7D00 (raw
-32000 = 0 A) at 0.1 A/bit. Convention: positive = drawing from pack,
-negative = charging into pack.
+**Pack current** is signed BE-16 with a fixed bias of 0x7D00 (raw 32000 = 0 A)
+at 0.1 A/bit. Convention: positive = drawing from pack, negative = charging
+into pack.
 
-Cross-validation against operator-confirmed dashboard amperage
-(amp-*.asc steady-state captures, 2026-05-09):
+Cross-validation against operator-confirmed dashboard amperage (amp-*.asc
+steady-state captures, 2026-05-09):
 
 | File          | data[2..3] range  | mean decoded A | dash A |
 |---------------|-------------------|----------------|--------|
@@ -440,27 +403,25 @@ Cross-validation against operator-confirmed dashboard amperage
 | amp-42.asc    | 0x7E8E – 0x7EC5   |  41.7          |  42    |
 | amp-58.asc    | 0x7F32 – 0x8061   |  62.1          |  58    |
 
-Mean decoded current matches dashboard to within ~1 A across the full
-0–60 A range, exercising the 0x7D→0x7E and 0x7F→0x80 high-byte
-boundaries. amp-1.asc is the only true-idle capture: data[2..3] is
-constant at 0x7D12 = 1.8 A standby draw (BMS + dashboard + DC-DC).
-Putting the tractor in DRIVE energizes inverter/contactor circuitry
-that adds ~16 A above standby — earlier captures sat at ~17 A "idle"
-for this reason.
+Mean decoded current matches dashboard to within ~1 A across the full 0–60 A
+range, exercising the 0x7D→0x7E and 0x7F→0x80 high-byte boundaries. amp-1.asc
+is the only true-idle capture: data[2..3] is constant at 0x7D12 = 1.8 A standby
+draw (BMS + dashboard + DC-DC). Putting the tractor in DRIVE energizes
+inverter/contactor circuitry that adds ~16 A above standby — earlier captures
+sat at ~17 A "idle" for this reason.
 
-**Pitfall warning.** A naive "data[3] alone, 1 A/bit" decode matches
-the dashboard at idle by coincidence: data[2] sits at 0x7D, the bias
-cancels, and data[3] reads as 0..25.5 A. The moment real current
-crosses ~25.6 A, data[2] ticks to 0x7E and data[3] rolls back near
-zero, making the byte-only decode appear to "saturate" under load.
-Always read both bytes BE with the bias.
+**Pitfall warning.** A naive "data[3] alone, 1 A/bit" decode matches the
+dashboard at idle by coincidence: data[2] sits at 0x7D, the bias cancels, and
+data[3] reads as 0..25.5 A. The moment real current crosses ~25.6 A, data[2]
+ticks to 0x7E and data[3] rolls back near zero, making the byte-only decode
+appear to "saturate" under load. Always read both bytes BE with the bias.
 
 **SOC (data[4])** — CONFIRMED. Fit:
 
     SOC % = data[4] × 0.4 − 0.8
 
-Slope 10/25 = 0.4, intercept −0.8; seven dashboard-screen anchors
-spanning 10 %–90 % are exactly collinear:
+Slope 10/25 = 0.4, intercept −0.8; nine dashboard-screen anchors at every
+10 % step from 10 % to 90 % all decode within 0.4 % of the displayed integer:
 
 | Dashboard | raw     | Fit predicts |
 |-----------|---------|--------------|
@@ -468,37 +429,30 @@ spanning 10 %–90 % are exactly collinear:
 | 20 %      | 52 (0x34)  | 20.0 %    |
 | 30 %      | 77 (0x4D)  | 30.0 %    |
 | 40 %      | 102 (0x66) | 40.0 %    |
+| 50 %      | 126 (0x7E) | 49.6 %    |
+| 60 %      | 152 (0x98) | 60.0 %    |
 | 70 %      | 177 (0xB1) | 70.0 %    |
 | 80 %      | 202 (0xCA) | 80.0 %    |
 | 90 %      | 227 (0xE3) | 90.0 %    |
 
-Raw saturates at 250 (= 99.2 %) at full charge. Linearity holds
-through the full 10–90 % range — no curvature or breakpoint at the
-low end.
+The 50 % anchor is the only one whose raw value (126) doesn't land exactly on
+the fit — it decodes to 49.6 %, which the dashboard rounds up to "50 %". The
+adjacent raw 127 would decode to exactly 50.0 %; the BMS happened to sit one
+LSB below it during the captures.
 
-**SOH candidate (data[5])** TENTATIVE. data[5] is 0xFA = 250 across
-every capture (42 captures, all BMS frames swept by
-`util/soh_byte_sweep.py`). 250 raw × 0.4 %/bit decodes to 100 %, which
-matches the SOH reading in the "BMS Update" document. SOH on a
-healthy low-cycle-count NMC pack should be effectively constant at
-100 % across short captures, so "looks like a fixed config field" and
-"is the real SOH at 100 %" produce identical evidence in this corpus.
-The byte-constancy sweep eliminates every other plausible SOH location
-in the visible BMS frames — every other constant byte is either
-already attributed (cell count, voltage, current, SOC) or is a J1939
-sentinel (0x00 / 0xFF).
+Raw saturates at 250 (= 99.2 %) at full charge. Linearity holds through the
+full 10–90 % range — no curvature or breakpoint at the low end.
 
-Corroborating evidence from UDAN's host-side System State export: UDAN
-exposes a separately labeled **`SOH(%)`** field that reads exactly
-**`100.0`** on this pack, sitting alongside its own `Shown SOC` and
-`Real SOC` fields. So the BMS does internally publish SOH as a real
-named field, not just hardcode the constant — strengthening "data[5]
-is the SOH byte" over "data[5] is a fixed config byte that happens to
-decode to 100 %". Still TENTATIVE on the byte assignment because both
-hypotheses still predict 250 here; upgrading to CONFIRMED needs a
-situation where SOH demonstrably differs from 100 % (older
-firmware/pack, or an injected spoof watched on the vendor GUI to
-verify the byte tracks).
+**SOH candidate (data[5])** TENTATIVE. data[5] is 0xFA = 250 across every
+capture (42 captures, all BMS frames swept by `util/soh_byte_sweep.py`). 250
+raw × 0.4 %/bit decodes to 100 %. The byte-constancy sweep eliminates every
+other plausible SOH location in the visible BMS frames — every other constant
+byte is either already attributed (cell count, voltage, current, SOC) or is a
+J1939 sentinel (0x00 / 0xFF).
+
+Lending evidence to the above, UDAN exposes a separately labeled **`SOH(%)`**
+field that reads exactly **`100.0`** on this pack, sitting alongside its own
+`Shown SOC` and `Real SOC` fields.
 
 #### F104F3 — Pack temperature min/max summary — CONFIRMED
 
@@ -521,18 +475,30 @@ Cross-validated two ways:
   values: F104F3 data[0] tracks 0x2830 top-1 raw value at r ≈ 1.0, and
   F104F3 data[1] tracks 0x2838 top-1 raw value the same way.
 
-#### F106F3 — BMS state — TENTATIVE
+#### F106F3 — BMS state — PARTIALLY CONFIRMED
 
 Periodic frame; byte 0 carries a state-machine vocabulary:
 
-| byte 0 | Inferred meaning           |
-|--------|----------------------------|
-| 0x00   | init / boot                |
-| 0x80   | standby / charger detected |
-| 0x45   | ready / driving            |
+| byte 0 | Inferred meaning                                  |
+|--------|---------------------------------------------------|
+| 0x00   | init / boot                                       |
+| 0x44   | brief transition (seen once between 0x80 and 0x45) |
+| 0x45   | active operation — driving OR actively delivering AC charge (2163/2169 frames in the 14-hour L1 charge are 0x45, not 0x80) |
+| 0x80   | **J1772 plug present, charger not yet delivering** — covers plug-no-AC and plug-AC-handshake-pending alike |
 
-Vendor GUI implies more states exist (Calibrating, Charging,
-Discharging, Fault, Sleep); not observed in captured data.
+A controlled plug-cycle (key on throughout) showed byte 0 stepping 0x45 → 0x80
+at the instant the J1772 connector was inserted into the tractor, and back to
+0x45 the instant active charging began (concurrent with FF50E5 status → 0x03).
+0x80 is therefore a **pre-charge** plug-present indicator only — it clears
+once charging is active. Three other bytes flip in lockstep at the same plug-in
+moment: F108F3 byte 5 = 0x01, F108F3 byte 7 = 0xBB (= 140 + 142 + 143 + 144 +
+145, the maintenance cluster), and 1806E5F4 bytes 0..4 = `00 00 00 00 01` (vs.
+the steady `03 4E 01 86 00` when no plug). Behavior on mid-charge unplug is
+not yet observed (the controlled capture ran at near-full SOC and the BMS
+went to sleep before the unplug step).
+
+Vendor GUI implies more states exist (Calibrating, Charging, Discharging,
+Fault, Sleep); not observed in captured data.
 
 #### F107F3 — BMS limits — PARTIALLY CONFIRMED
 
@@ -540,57 +506,73 @@ Layout matches the standard J1939 limits-frame template:
 
 | Bytes | Likely meaning                              | Observed                                                  |
 |-------|---------------------------------------------|-----------------------------------------------------------|
-| 0..1  | Discharge current limit, 0.01 A/bit         | 0x38A4 (145.0 A) or 0x2710 (100.0 A) — see below          |
-| 2..3  | Charge current limit, 0.01 A/bit            | 0x2710 (100.0 A) typically; 0x3070 (124.0 A) seen driving; 0x32C8 (130.0 A) seen during charge startup/transition |
-| 4     | Companion flag to bytes 0..1                | 0x01 paired with 145.0 A; 0x00 paired with 100.0 A         |
-| 5     | Pack-voltage echo (non-linear, banded)      | Live banded values when byte 4 = 0x01; 0x00 when byte 4 = 0x00 (see below) |
+| 0..1  | Discharge current limit, 0.01 A/bit         | 0x38A4 (145.0 A) dominant (~92 % of frames); 0x2710 (100.0 A) at boot/idle/active charging/low-SOC limp; 0x2EE0 (120.0 A) and 0x36B0 (140.0 A) as brief boot-ramp intermediates |
+| 2..3  | Max current-into-pack acceptance (regen during drive, AC charger during charging), 0.01 A/bit | SOC-dependent taper: 130 A at 10–14 %, 124 A at 20–75 %, 110.5 A at 80 %, 100 A at ≥90 % (and during active AC charging). Boot ramps through 0x27D8…0x2FA8 in 2-A steps (102→122 A) before settling. See SOC-taper table below. |
+| 4     | Companion flag to bytes 0..1                | 0x01 when bytes 0..1 ∈ {0x36B0, 0x38A4} (≥140 A discharge limit); 0x00 when bytes 0..1 ∈ {0x2710, 0x2EE0} (≤120 A) — transition is between the 120 A and 140 A rungs of the boot ramp |
+| 5     | Pack-voltage echo (non-linear, banded)      | Live banded values when byte 4 = 0x01; 0x00 when byte 4 = 0x00             |
 | 6..7  | Charge-power allowance above 100 A baseline, BE u16 × 10 W | 0x0000 when charge limit is 100 A; otherwise tracks `(charge_limit_a - 100 A) × pack_voltage_v` |
 
-Bytes 0..1 stay pinned at 145.0 A throughout drive captures even when
-actual pack current on F100F3 peaks above 230 A during high-gear
-acceleration (one capture peaked at 233.9 A while F107 never widened).
-So this field is not an enforced instantaneous ceiling — most plausibly
-a continuous/nameplate rating broadcast as an advisory, with real
-protection living on separate voltage-sag and temperature thresholds.
-Bytes 2..3 are not always 0x2710 as previously noted; at least one
-driving capture shows 0x3070 (124.0 A), so the slot does carry
-meaningful values rather than being a permanent sentinel.
+Bytes 0..1 stay pinned at 145.0 A throughout drive captures even when actual
+pack current on F100F3 peaks above 230 A during high-gear acceleration (one
+capture peaked at 233.9 A while F107 never widened). So this field is not an
+enforced instantaneous ceiling — most plausibly a continuous/nameplate rating
+broadcast as an advisory, with real protection living on separate voltage-sag
+and temperature thresholds.
 
-Bytes 6..7 are now confirmed as a charge-power allowance above the 100 A
-baseline. Across 558,309 paired F107/F100 frames in 66 captures, including
-the 14-hour 9.6%-to-99.2% charge capture, the raw value matches
-`(charge_limit_a - 100 A) × pack_voltage_v / 10` within 1 raw count. This
-explains the formerly "unknown" nonzero low byte in the `38 A4 30 70 01 XX
-00 YY` drive pattern and the startup/transition rows in charging captures.
+Bytes 6..7 are confirmed as a charge-power allowance above the 100 A baseline.
+Across all paired F107/F100 frames the raw value matches `(charge_limit_a - 100
+A) × pack_voltage_v / 10` within 1 raw count — so b2..3 and b6..7 are a
+redundant A-and-W encoding of the same allowance.
 
-**Common F107F3 patterns.** The frame has two dominant steady-state shapes
-plus startup/transition values:
+**Bytes 2..3 are the max current the BMS will accept *into* the pack** from
+whatever source is pushing — regen during driving, the OBC during AC charging.
+The value follows a clean monotonic taper with SOC:
 
-| Pattern                            | Bytes 0..1 | Byte 4 | Byte 5 |
-|------------------------------------|------------|--------|--------|
-| `27 10 27 10 00 00 00 00`          | 100.0 A    | 0x00   | 0x00   |
-| `38 A4 30 70 01 XX 00 YY`          | 145.0 A    | 0x01   | banded |
+| SOC band  | b2..3   | Acceptance |
+|-----------|---------|------------|
+| 10–14 %   | 0x32C8  | 130.0 A    |
+| 20–75 %   | 0x3070  | 124.0 A    |
+| 80 %      | 0x2B2A  | 110.5 A    |
+| ≥ 90 %    | 0x2710  | 100.0 A    |
 
-Byte 4 and byte 5 are not independent state bits — they move in
-lockstep with bytes 0..1. The `27 10` pattern is the BMS's
-default/zeroed broadcast and shows up in several distinct contexts:
+This is a textbook battery-acceptance curve: the empty pack can sink more
+current safely, and the BMS narrows the budget as SOC climbs to avoid
+overcharge. The same taper applies to AC charging (the OBC sees the same
+guidance), but the OBC only delivers ~21 A DC anyway, so the number doesn't
+constrain it in practice. During active AC charging the whole frame collapses
+to `27 10 27 10 00 00 00 00` regardless of SOC — see the "Active AC charging"
+bullet below.
 
-- **Key-on boot ramp** (~1.5 s): `27 10 27 10 00 00 00 00` → intermediate
-  steps (`2E E0 27 D8 00 8D 00 0E`, `36 B0 28 A0 01 19 00 1C`) →
-  settled `38 A4 30 70 01 XX 00 YY`.
-- **Key-off / R1 N transition**: snaps back to `27 10` and stays there
-  through shutdown.
+Like b0..1, **b2..3 is advisory, not an enforced ceiling**:
+`driving-2800rpm-highgear-regen.asc` shows instantaneous regen hitting
+−133.8 A while b2..3 was publishing 124 A. Real protection lives on the same
+voltage/temperature thresholds noted for b0..1.
+
+**Common F107F3 patterns.** The frame has four dominant steady-state shapes plus
+startup/transition values:
+
+| Pattern                            | Bytes 0..1 | Bytes 2..3 | Byte 4 | Byte 5 | Context                              |
+|------------------------------------|------------|------------|--------|--------|--------------------------------------|
+| `38 A4 30 70 01 XX 00 YY`          | 145.0 A    | 124.0 A    | 0x01   | banded | Sustained drive default              |
+| `38 A4 32 C8 01 XX 00 YY`          | 145.0 A    | 130.0 A    | 0x01   | banded | Sustained low-SOC drive (10–14 %)    |
+| `38 A4 27 10 01 XX 00 YY`          | 145.0 A    | 100.0 A    | 0x01   | banded | High-SOC idle / brief drive transients |
+| `27 10 27 10 00 00 00 00`          | 100.0 A    | 100.0 A    | 0x00   | 0x00   | Boot / key-off / active charging / low-SOC limp |
+
+Byte 4 and byte 5 are not independent state bits — they move in lockstep with
+bytes 0..1. The `27 10` pattern is the BMS's default/zeroed broadcast and shows
+up in several distinct contexts:
+
+- **Key-on boot ramp** (~1.5 s): discharge limit (bytes 0..1) climbs
+  27 10 → 2E E0 → 36 B0 → 38 A4 (100 → 120 → 140 → 145 A) while charge limit
+  (bytes 2..3) sweeps 27 D8 → 2F A8 in 2-A steps (102 → 122 A) before settling
+  at 30 70 (124 A). One full ramp captured at ~5 frames per rung.
+- **Key-off / R1 N transition**: snaps back to `27 10` and stays there through
+  shutdown.
 - **Active AC charging**: after startup/transition rows, persistent `27 10`
   throughout normal charge.
-- **Persistent low-SOC limp** when SOC drops below 10 %. Motor RPM
-  clipped at ~1200 (vs ~2800 at full power in high gear) and the
-  controller's effort-magnitude byte (FF21CA data[0]) clipped at 0x8B
-  (54 % of full scale) regardless of pedal press — the Curtis MC obeys
-  the announced 100 A discharge ceiling and reports the budget-capped
-  effort it's allowed to issue. See `FF21CA data[0]` below.
-- **Brief mid-drive transients** at low SOC: drives at SOC 10–14 %
-  show sporadic ~2 s excursions to the `27 10` pattern with no
-  abnormal current or voltage in F100F3 at the moment of the dip.
+- **Brief mid-drive transients** at low SOC: drives at SOC 10–14 % show
+  sporadic ~2 s excursions to the `27 10` pattern with no abnormal current or
+  voltage in F100F3 at the moment of the dip.
 
 The sustained 100.0 A clamp is a **separate threshold** from the F108
 code 101 (SOC ≤ 15 %) and code 140 fault bits: a continuous ~15-minute
@@ -742,9 +724,9 @@ anywhere in FF21CA** — derive it from the sign of `F100F3` pack
 current. Raw 0..0xFF; idle resting offset ~3 (sensor noise); below
 raw ~14 the controller's dead band keeps motor RPM near 0. CONFIRMED.
 
-Three observations that establish the "effort, not pedal" reading:
+Two observations that establish the "effort, not pedal" reading:
 
-- **Stationary tests with the pedal floored and the brake set** top out
+- **Stationary tests with the pedal floored in neutral** top out
   in the 0x20..0x48 range (= 13–28 % of raw scale). A pedal-position
   field would read near full-scale regardless of load; an effort-demand
   field stays low because the controller doesn't need to issue much
@@ -753,48 +735,42 @@ Three observations that establish the "effort, not pedal" reading:
   0x99..0xAE (≈ 60–70 %) while pack current swings to −133 A (into the
   pack). Pedal-position cannot explain a high reading with the pedal
   off; effort-demand can.
-- **Limp engagement** clips the byte at ~0x8B regardless of pedal
-  press, in lockstep with the BMS-broadcast 100 A discharge limit. The
-  controller is reporting the effort it's allowed to issue under the
-  active power budget, not the operator's request.
 
-The forward/reverse ceiling asymmetry noted historically (raw ceilings
-of 0xFF vs ~0x96) is a controller-side reverse-effort limiter applied
-before the byte goes on the wire.
+The forward/reverse ceiling asymmetry noted historically (raw ceilings of 0xFF
+vs ~0x96) is a controller-side reverse-effort limiter applied before the byte
+goes on the wire.
 
 **Brief 0x00 transients under heavy load — CONFIRMED.** During heavy
-acceleration bursts where the byte is otherwise pinned at 0xFE/0xFF,
-the value occasionally drops to 0x00 for 1–3 frames (~30 ms) before
-snapping back to ≥0xFE. These transients only appear at non-zero
-motor RPM in the middle of a sustained-high cluster (immediately
-preceding and following frames both ≥ 0xF0), so they cannot be real
-zero-effort readings. The mechanism is most plausibly an 8-bit
-wraparound or overflow artifact in the controller's internal effort
-calculation — TENTATIVE. Consumers should hold the previous reading
-across any 0x00 sample whose neighbours are near full-scale; treating
-the 0x00 literally will produce dashboard flicker at peak load.
+acceleration bursts where the byte is otherwise pinned at 0xFE/0xFF, the value
+occasionally drops to 0x00 for 1–3 frames (~30 ms) before snapping back to
+≥0xFE. These transients only appear at non-zero motor RPM in the middle of a
+sustained-high cluster (immediately preceding and following frames both ≥
+0xF0), so they cannot be real zero-effort readings. The mechanism is most
+plausibly an 8-bit wraparound or overflow artifact in the controller's internal
+effort calculation — TENTATIVE. Consumers should hold the previous reading
+across any 0x00 sample whose neighbours are near full-scale; treating the 0x00
+literally will produce dashboard flicker at peak load.
 
-**Controller and motor temperatures (data[4], data[5]) — CONFIRMED.** Both u8 with
-the J1939 −40 °C offset. Raw 0 = not present (suppressed). data[4] is
-the Curtis 1238E controller (inverter electronics) and data[5] is the
-traction motor housing.
+**Controller and motor temperatures (data[4], data[5]) — CONFIRMED.** Both u8
+with the J1939 −40 °C offset. Raw 0 = not present (suppressed). data[4] is the
+Curtis 1238E controller (inverter electronics) and data[5] is the traction
+motor housing.
 
-Confirmed by thermal-response signature over a 24-minute sustained-load
-capture (highway-gear drive + mowing) with BMS pack temperature pinned
-at 15 °C the whole time:
+Confirmed by thermal-response signature over a 24-minute sustained-load capture
+(highway-gear drive + mowing) with BMS pack temperature pinned at 15 °C the
+whole time:
 
-- data[4] rose 19 → 32 °C (+13 °C), data[5] rose 15 → 23 °C (+8 °C).
-  Both monotonic with load — rules out non-thermal interpretations
-  (counter, status, gear).
-- data[4] responds tick-by-tick to load (25–28 °C oscillation during
-  heavy work) and reaches the higher peak; data[5] is smoother and
-  trails. That matches a small inverter heatsink (fast thermal time
-  constant, higher steady-state) vs. a large motor housing (slow time
-  constant, cooler) — confirming the label assignment.
-- Starting values land at ambient (data[5] = 15 °C = pack temp;
-  data[4] a few °C warm from prior idle), and peaks stay well below
-  the fault thresholds (75 °C controller, 125 °C motor) — confirming
-  the +40 offset.
+- data[4] rose 19 → 32 °C (+13 °C), data[5] rose 15 → 23 °C (+8 °C). Both
+  monotonic with load — rules out non-thermal interpretations (counter, status,
+  gear).
+- data[4] responds tick-by-tick to load (25–28 °C oscillation during heavy
+  work) and reaches the higher peak; data[5] is smoother and trails. That
+  matches a small inverter heatsink (fast thermal time constant, higher
+  steady-state) vs. a large motor housing (slow time constant, cooler) —
+  confirming the label assignment.
+- Starting values land at ambient (data[5] = 15 °C = pack temp; data[4] a few
+  °C warm from prior idle), and peaks stay well below the fault thresholds (75
+  °C controller, 125 °C motor) — confirming the +40 offset.
 
 **Packed transmission state (data[7]).**
 
@@ -808,34 +784,26 @@ at 15 °C the whole time:
         0x4 = Forward
         0x8 = Reverse
 
-**Startup interlock.** data[7] reflects lever position only, not
-drivetrain readiness. After power-on the motor controller requires the
-F/N/R lever to pass through Neutral before it will accept a drive
-direction: the tractor will not move even if the F or R nibble is
-present in data[7]. There is no CAN signal that distinguishes this
-"not-yet-armed" state from normal operation — the byte is identical in
-both cases. Applications must track power-on state independently and
-prompt the operator to cycle through Neutral before commanding motion.
+**Startup interlock.** data[7] reflects lever position only, not drivetrain
+readiness. After power-on the motor controller requires the F/N/R lever to pass
+through Neutral before it will accept a drive direction: the tractor will not
+move even if the F or R nibble is present in data[7]. There is no CAN signal
+that distinguishes this "not-yet-armed" state from normal operation — the byte
+is identical in both cases. Applications must track power-on state
+independently and prompt the operator to cycle through Neutral before
+commanding motion.
 
-**Range switch R1/R2/R3 — CONFIRMED.** The high nibble of data[7] is
-the operator's range-switch selection from the dashboard control
-(3 settings labeled with animal icons on the tractor — turtle at R1,
-rabbit at R3; referred to as R1/R2/R3 throughout this documentation).
-It selects a motor-RPM cap (2000 / 2500 / 2800) and is **not** a
-mechanical gear stage — it does not change any drivetrain ratio. The
-cap is drive-side only: it limits inverter-commanded RPM but not
-coast/regen overspeed. Motor RPM > 3000 has been observed in R3 while
-regen is active.
+**Range switch R1/R2/R3 — CONFIRMED.** The high nibble of data[7] is the
+operator's range-switch selection from the dashboard control (3 settings
+labeled with animal icons on the tractor — turtle at R1, rabbit at R3; referred
+to as R1/R2/R3 throughout this documentation). It selects a motor-RPM cap (2000
+/ 2500 / 2800) and is **not** a mechanical gear stage. The cap is drive-side
+only: it limits inverter-commanded RPM but not coast/regen overspeed. Motor RPM
+> 3000 has been observed in R3 while regen is active.
 
-**The mechanical L/M/N/H range lever is sensor-less** and broadcasts
-nothing on CAN. Its position cannot be recovered from any frame on this
-bus — only the operator knows it. A controlled rev-test capture
-(R3-mode pinned, F/N/R lever in Forward, pedal floored to 2800 motor
-RPM in each of L, M, H, and Neutral on the mechanical lever) showed the
-high nibble stayed at 0x2 across all four mechanical positions, while
-the FF21CA "torque" effort byte tracked the drivetrain load and
-ramped from ~0x22 (mechanical N, drivetrain disengaged) to ~0x84
-(mechanical H) — see the Torque subsection above.
+**The mechanical L/M/N/H range lever is sensor-less** and broadcasts nothing on
+CAN. Its position cannot be recovered from any frame on this bus — only the
+operator knows it.
 
 **Ground speed is NOT derivable from CAN.** Wheel-speed computation
 requires knowing which mechanical gear is engaged, which the bus does
@@ -880,31 +848,30 @@ path:
 - MC (SA 0xCA): J1939 DM1, SPN = displayed number.
 - BMS (SA 0xF3): proprietary F108 bitmap (continuous broadcast).
 
-**Latch quirk.** The cluster latches DM1 DTCs on receipt and does
-**not** unlatch when DM1 returns to empty. Standard J1939 prescribes
-DTCs going "previously active" after 3 s of frame absence; this
-cluster keeps them on screen until a key cycle.
+**Latch quirk.** The cluster latches DM1 DTCs on receipt and does **not**
+unlatch when DM1 returns to empty. Standard J1939 prescribes DTCs going
+"previously active" after 3 s of frame absence; this cluster keeps them on
+screen until a key cycle.
 
 FF21CA bytes 1 and 6 (data[1], data[6]) are constant zero and remain
-fault-bitmap candidates for non-DM1 status surfacing — injection of
-non-zero values into FF21CA byte 7 flashed dashboard lamps but never
-produced a numeric code.
+fault-bitmap candidates for non-DM1 status surfacing — injection of non-zero
+values into FF21CA byte 7 flashed dashboard lamps but never produced a numeric
+code.
 
 
 #### Motor speed encoder
 
-The motor's 2-channel A/B quadrature encoder (no Z pulse, PPR not
-yet measured) connects to the MC via a 4-pin IC pigtail. Pin
-assignments from the service manual's code-12 and code-36 DTC
-troubleshooting procedures:
+The motor's 2-channel A/B quadrature encoder (no Z pulse, PPR not yet measured)
+connects to the MC via a 4-pin IC pigtail. Pin assignments from the service
+manual's code-12 and code-36 DTC troubleshooting procedures:
 
-- **Pins 1 & 4** — 12 V supply (12 V should appear between these pins
-  with the pigtail unplugged from the motor, IGN on)
-- **Pins 2 & 3** — A and B signal channels (frequency increases
-  proportionally with motor speed)
+- **Pins 1 & 4** — 12 V supply (12 V should appear between these pins with the
+  pigtail unplugged from the motor, IGN on)
+- **Pins 2 & 3** — A and B signal channels (frequency increases proportionally
+  with motor speed)
 
-To measure PPR, probe pins 2 and 3 while spinning at a known RPM —
-see open questions.
+To measure PPR, probe pins 2 and 3 while spinning at a known RPM — see open
+questions.
 
 
 ### Charger (SA 0xE5)
@@ -919,9 +886,9 @@ Proprietary B frame from the on-board charger.
 | 2..3 | data[1..2] LE | Output voltage: V = raw × 0.1 + status-selected offset (valid while status is 0x02 or 0x03) |
 | 4..5 | data[3..4] LE | Output-current raw. In active charging `data[4] = 0`, so current = `data[3] × 0.1 A`; nonzero `data[4]` marks idle/self-test artifacts |
 
-**The status byte is dual-purpose: it indicates that the OBC is
-actively delivering charge AND selects the pack-V encoding offset for
-`data[1..2]`** — the same low/high variant scheme as F100F3 byte 0.
+**The status byte is dual-purpose: it indicates that the OBC is actively
+delivering charge AND selects the pack-V encoding offset for `data[1..2]`** —
+the same low/high variant scheme as F100F3 byte 0.
 
 Status byte vocabulary:
 
@@ -932,48 +899,48 @@ Status byte vocabulary:
 | 0x02       | **Actively delivering charge, LO pack-V encoding** — `data[1..2]` = pack V × 0.1 + 51.2 V (covers 51.2..76.7 V)  |
 | 0x03       | **Actively delivering charge, HI pack-V encoding** — `data[1..2]` = pack V × 0.1 + 76.8 V (covers 76.8..102.3 V) |
 
-`data[3]` = DC charger output current × 0.1 A/bit, no offset, while
-status is 0x02/0x03 and `data[4] = 0x00` — CONFIRMED in both 0x02 and
-0x03. The combined `data[3..4]` LE value is still kept as a raw diagnostic
-field because `data[4]` carries nonzero sentinel/status values outside
-active charging.
+`data[3]` = DC charger output current × 0.1 A/bit, no offset, while status is
+0x02/0x03 and `data[4] = 0x00` — CONFIRMED in both 0x02 and 0x03. The combined
+`data[3..4]` LE value is still kept as a raw diagnostic field because `data[4]`
+carries nonzero sentinel/status values outside active charging.
 
 The encoding for `data[1..2]` is anchored by linear regression across a
-multi-hour L1 charge in status 0x02: slope 0.099 V/LSB, intercept
-51.6 V (R² > 0.99) — matches the F100F3 byte-0 LO variant within 1 %.
-In status 0x03 the same regression against the end-of-charge taper
-yields slope 0.1024 V/LSB, intercept 77.04 V (R² = 0.9856) — the HI
-variant. The 0x02 → 0x03 transition fires when pack V crosses
-~76.8 V; it is not a CC→CV phase change.
+multi-hour L1 charge in status 0x02: slope 0.099 V/LSB, intercept 51.6 V (R² >
+0.99) — matches the F100F3 byte-0 LO variant within 1 %. In status 0x03 the
+same regression against the end-of-charge taper yields slope 0.1024 V/LSB,
+intercept 77.04 V (R² = 0.9856) — the HI variant. The 0x02 → 0x03 transition
+fires when pack V crosses ~76.8 V; it is not a CC→CV phase change.
 
-The 0x4000 DID mirrors FF50 `data[0..3]` at its bytes 5..8 during
-charging; 0x4000 byte 9 is a separate unknown dynamic/status byte — see
-`bms/README.md` §`0x4000`.
+The 0x4000 DID mirrors FF50 `data[0..3]` at its bytes 5..8 during charging;
+0x4000 byte 9 is a separate unknown dynamic/status byte — see `bms/README.md`
+§`0x4000`.
 
-**Charge-current profile is constant-power, not constant-current** —
-CONFIRMED, but unrelated to the status byte. Across a full L1 charge
-the OBC holds DC output power at **1475 W ± 3 W (σ/μ = 0.20 %)** while
-pack voltage rises 70 → 83 V and current smoothly tapers 21 → 18 A.
-The regulator is mains-power-limited (≈110 V × 13 A × ~96 %
-efficiency). L2 (220 V) charging is expected to land at ~3 kW DC,
-matching the brochure's 3.3 kW rating. A brief true-CV taper (18 A →
-9.9 A in ~6 min) occurs at the very end of charge before a clean
-`3 → 2 → 1 → 0` shutdown.
+**Charge-current profile is constant-power, not constant-current** — CONFIRMED,
+but unrelated to the status byte. Across a full L1 charge the OBC holds DC
+output power at **1475 W ± 3 W (σ/μ = 0.20 %)** while pack voltage rises 70 →
+83 V and current smoothly tapers 21 → 18 A. The regulator is
+mains-power-limited (≈110 V × 13 A × ~96 % efficiency). L2 (220 V) charging is
+expected to land at ~3 kW DC, matching the brochure's 3.3 kW rating. A brief
+true-CV taper (18 A → 9.9 A in ~6 min) occurs at the very end of charge before
+a clean `3 → 2 → 1 → 0` shutdown.
 
-**`data[1..2]` is only a valid pack-V reading while status ∈ {0x02,
-0x03}.** The charger module beacons self-test artifacts during wake-up
-and when the plug is inserted without AC mains:
+**`data[1..2]` is only a valid pack-V reading while status ∈ {0x02, 0x03}.**
+The charger module beacons self-test artifacts during wake-up and when the plug
+is inserted without AC mains:
 
 - Plug inserted, no AC: status = 0x00, v_raw = 2, i_raw = 2048
   (constant). FF50E5 still beacons at ~10 Hz.
 - No charger connected: status briefly cycles 0x00 → 0x01 → 0x02
   during wake-up with nonsensical v/i values for a few frames.
 
-Status = 0x00 means "not actively delivering" — it does **not**
-distinguish charger absent / charger present but unpowered / charger
-present but BMS-inhibited. Charger-presence detection therefore lives
-elsewhere (current best candidate: F108F3 byte 7 maintenance codes
-asserting when plug is inserted at 100 % SOC).
+Status = 0x00 means "not actively delivering" — it does **not** distinguish
+charger absent / charger present but unpowered / charger present but
+BMS-inhibited. Plug-presence detection lives on the BMS side: F106F3 byte 0 =
+0x80 asserts at the instant the J1772 is inserted (with F108F3 byte 5 = 0x01
+and byte 7 = 0xBB co-asserting), and clears once active charging begins. A
+robust plug-present signal across all states is therefore
+`(F106F3 b0 == 0x80) OR (FF50E5 status ∈ {0x02, 0x03})` — pre-charge handshake
+plus active charging. Mid-charge unplug behavior remains uncharacterized.
 
 
 ### Vehicle controller (SA 0xD0)
@@ -1275,12 +1242,12 @@ SPN values respectively. The two ranges do not overlap, so a dashboard
     92  EM Brake failed to set
     99  Parameter Mismatch
 
-39 entries, 35 distinct S.No. values. Codes 18, 31, 32, 36 each have
-two definitions sharing a number — a numeric code on the dashboard
-does not uniquely identify the underlying fault for those four;
-disambiguation needs additional context (which subsystem is implicated
-by other simultaneous symptoms, vendor service-tool readout, etc.).
-Code 51 is listed out of numeric order in the manual.
+39 entries, 35 distinct S.No. values. Codes 18, 31, 32, 36 each have two
+definitions sharing a number — a numeric code on the dashboard does not
+uniquely identify the underlying fault for those four; disambiguation needs
+additional context (which subsystem is implicated by other simultaneous
+symptoms, vendor service-tool readout, etc.). Code 51 is listed out of numeric
+order in the manual.
 
 
 ## Open questions
@@ -1300,8 +1267,7 @@ Code 51 is listed out of numeric order in the manual.
   publish a labeled `SOH(%)` field (= 100.0 on this pack), so the
   thing exists; what remains open is whether F100F3 data[5] is the
   byte that carries it. See the F100F3 section. Promoting to
-  CONFIRMED needs a capture where SOH differs from 100 % (older
-  firmware/pack, or an injected spoof watched on the vendor GUI).
+  CONFIRMED needs a capture where SOH differs from 100 %.
 - **Wake-up signal source — partially answered.** UDAN exports a
   labeled "Wake-up signal" field whose value is a categorical enum
   (not a single status bit). Two values observed directly in UDAN
@@ -1310,43 +1276,28 @@ Code 51 is listed out of numeric order in the manual.
   must encode the wake source as a multi-value field somewhere — not
   yet located in our decoded CAN traffic. Open question reframed:
   *which BMS broadcast byte carries this enum*, given that we now
-  know it isn't a single bit.
-- **F104 byte-level decode.** Pack temperature min/max summary,
-  analogous to F102 for cells. Not parsed.
+  know it isn't a single bit. **F106F3 byte 0 is ruled out** — it
+  tracks current operating state (active/standby/boot) and changes
+  mid-session, whereas a wake-source enum should be set at boot and
+  persist.
 - **F106 / F107 byte-level decode.** F107 current limits and bytes 6..7 are
   now decoded; byte 5 remains a banded pack-voltage echo with an unknown
   encoding formula. F106 running-mode vocabulary is still only partially
-  mapped.
+  mapped — `0x45` covers both driving and active charging, `0x80` only
+  applies when the charger is plugged in but not delivering, and a brief
+  `0x44` transition has been seen; vendor GUI implies more states.
 - **Full running-mode enumeration.** Vendor GUI implies at least
   Calibrating, Charging, Discharging, Fault, Sleep beyond the
   init/standby/ready states observed.
 - **0x7FD wake frame on the BMS diagnostics bus.** One 8-byte all-zero
   frame at CAN ID `0x7FD` appears on the diagnostics pair within ~10 ms
   of each key-on (not at key-off). Origin and purpose UNKNOWN; ID is
-  outside the standard OBD-II `0x7E0`–`0x7EF` range.
-- **UDAAN tool — identified, downloadable; one practical blocker.**
-  UDAAN is the **UDAN iBMS Upper Utility** from Anhui UDAN Technology
-  Co., Ltd. (Chinese BMS firmware/tool vendor; the physical pack is
-  Soundon, see "Vehicle and pack" above). Windows software,
-  CAN @ 250 kbit/s (matches our bus),
-  supports cheap CANalyst-II / PCAN / USBCAN dongles. V3.1 manual is
-  in `docs/UDAN_iBMS_Upper_Utility_v3.1_manual.pdf`. Download portal:
-  `https://www.ievcloud.com/burner_en.html`. Practical decode path:
-  install the tool + a CANalyst-II dongle, tap the OBD-II port (pin 6
-  CAN_H, pin 14 CAN_L), enable both the `Comm. Message` checkbox (raw
-  CAN log) and the `Data Storage` checkbox (Excel of every System
-  Overview UI field every 2 s), and operate the tractor through known
-  states. Cross-referencing the two logs produces an empirical DBC for
-  every BMS broadcast frame — closing out F100/F102/F104/F107/
-  F113..F117 byte-decoding without vendor cooperation. The one
-  practical blocker: read/write features require login, and the
-  manual doesn't document credential acquisition. View-only mode may
-  expose the System Overview screen without login; if not, request
-  access via Solectrac/Farmtrac support citing the service-manual
-  references to UDAAN by name.
-- **FF21CA byte 1, 4, 6 semantics.** data[1] and data[6] are
-  constant-zero fault-bitmap candidates; data[4] is a three-state
-  field changing near startup calibration.
+- **FF21CA data[1] and data[6] semantics.** Across 435k frames in the
+  corpus, data[6] is 0x00 in every single frame; data[1] is 0x00 in
+  434,670 of 435,045 frames with 375 brief `0x01` excursions. Both
+  remain fault-bitmap candidates. (data[4] is decoded — controller
+  temperature, °C = raw − 40, validated against the mowing capture
+  where it rises 27 → 35 °C over 30 minutes of sustained load.)
 - **SA 0x12 role.** Emits FF21 payload `01 00 00 00 00 00 00 00` in
   steady state; byte 0 transitions through `0x00` for ~1 s immediately
   after a key-on 0x41 marker before settling at `0x01`. Distinct from
