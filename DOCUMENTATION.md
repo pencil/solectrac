@@ -266,8 +266,9 @@ as additional data storage:
   }
 ```
 
-In data J1939 data collected for the Solectrac, > 99% (all except the 1806E5F4
-request from the vehicle-controller 0xF4 to the on-board charger 0xE5).
+In J1939 data collected for the Solectrac, > 99% of frames are PDU2
+broadcasts. The only recurring PDU1 exception is `1806E5F4`: a proprietary
+charger-command request from SA 0xF4 to the on-board charger at 0xE5.
 
 ### Source-address map
 
@@ -281,11 +282,24 @@ document.
 |------|---------------------------------------|--------------------------------------------------------------|
 | 0xF3 | BMS                                   | F100/F102/F104/F106/F107/F108/F113../F155..                  |
 | 0xE5 | On-board charger                      | FF50 telemetry                                               |
-| 0xF4 | Vehicle controller (drive-side)       | Sends 1806E5F4 (request to charger)                          |
-| 0xD0 | Vehicle controller / dashboard accy.  | Periodic F100D0 heartbeat; byte-0 0x00 → 0x0C at wake-up     |
+| 0xF4 | BMS charger-interface logical SA      | Sends 1806E5F4 (BMS-to-charger voltage/current request)       |
+| 0xD0 | Vehicle / accessory controller (physical home unresolved) | Periodic F100D0 heartbeat; byte-0 0x00 → 0x0C at wake-up     |
 | 0xCA | Motor controller / drive ECU          | DM1 (FECA) + FF21 motor telemetry (~85 Hz); silent while charging |
-| 0x12 | Unknown                               | FF21 payload `01 00 00 00 00 00 00 00` in steady state; transitions through `00 00 00 00 00 00 00 00` for ~1 s right after key-on (byte 0 toggles 0x00 → 0x01) |
+| 0x12 | Dashboard / instrument cluster        | FF21 heartbeat at ~10 Hz; byte 0 = 0x00 during boot, 0x01 once alive |
 | 0x041 (11-bit) | Ignition event marker (non-J1939) | Standard CAN 2.0A, not J1939. Constant payload `20 12 01 00 00 00 01 11`. Observed exactly twice per full ignition cycle (one frame at key-on, one at key-off); absent from captures that don't span a power transition. Source ECU unconfirmed. |
+
+#### FF2112 — Dashboard heartbeat — CONFIRMED
+
+SA 0x12 broadcasts PGN FF21 at ~10 Hz with payload
+`01 00 00 00 00 00 00 00` in steady state. The same PGN is used by the
+motor controller at SA 0xCA, but the on-wire IDs are distinct:
+`0x18FF2112` vs. `0x0CFF21CA`.
+
+Byte 0 is an alive flag: `0x00` during the first ~700 ms after key-on
+(cluster boot), then `0x01` thereafter. Bytes 1..7 are always `0x00`
+padding. The dashboard/instrument-cluster attribution is by elimination:
+SA 0x12 is not a standard J1939 source address, and the boot-then-alive
+pattern lines up with the key-on transitions in the ignition captures.
 
 ### BMS (SA 0xF3)
 
@@ -444,7 +458,7 @@ Raw saturates at 250 (= 99.2 %) at full charge. Linearity holds through the
 full 10–90 % range — no curvature or breakpoint at the low end.
 
 **SOH candidate (data[5])** TENTATIVE. data[5] is 0xFA = 250 across every
-capture (42 captures, all BMS frames swept by `util/soh_byte_sweep.py`). 250
+capture (73 captures, all BMS frames swept by `util/soh_byte_sweep.py`). 250
 raw × 0.4 %/bit decodes to 100 %. The byte-constancy sweep eliminates every
 other plausible SOH location in the visible BMS frames — every other constant
 byte is either already attributed (cell count, voltage, current, SOC) or is a
@@ -701,11 +715,11 @@ real-time inverter feed).
 | Byte | data[]        | Meaning                                                          |
 |------|---------------|------------------------------------------------------------------|
 | 1    | data[0]       | **Torque** — unsigned magnitude of motor effort, raw 0..0xFF      |
-| 2    | data[1]       | 0x00 constant — fault-bitmap candidate (UNKNOWN)                  |
+| 2    | data[1]       | Usually 0x00; brief 0x01 excursions during low-torque forward motion (UNKNOWN) |
 | 3..4 | data[2..3] LE | **Motor RPM**: rpm = (le16) − 0x0C80                       |
 | 5    | data[4]       | **Controller temperature**: °C = raw − 40                          |
 | 6    | data[5]       | **Motor temperature**: °C = raw − 40                               |
-| 7    | data[6]       | 0x00 constant — fault-bitmap candidate (UNKNOWN)                  |
+| 7    | data[6]       | 0x00 constant — fault/status candidate (UNKNOWN)                  |
 | 8    | data[7]       | **Packed transmission state** (high nibble = range, low = F/N/R)  |
 
 **Motor RPM.** Little-endian uint16 with bias 0x0C80 (=3200).  RPM is
@@ -739,6 +753,13 @@ Two observations that establish the "effort, not pedal" reading:
 The forward/reverse ceiling asymmetry noted historically (raw ceilings of 0xFF
 vs ~0x96) is a controller-side reverse-effort limiter applied before the byte
 goes on the wire.
+
+**Byte 1 (data[1]) remains UNKNOWN.** Across 425,941 FF21CA frames in 68
+captures, data[1] is `0x00` in 425,588 frames and `0x01` in 353 frames. The
+nonzero samples appear only in four driving captures, all during low-torque
+forward motion (torque raw 0..6, RPM 219..1425, range-state bytes 0x14 or
+0x24). It is not a steady fault bitmap: it does not co-fire with DM1, and it
+appears in normal driving without any displayed MC code.
 
 **Brief 0x00 transients under heavy load — CONFIRMED.** During heavy
 acceleration bursts where the byte is otherwise pinned at 0xFE/0xFF, the value
@@ -853,10 +874,10 @@ unlatch when DM1 returns to empty. Standard J1939 prescribes DTCs going
 "previously active" after 3 s of frame absence; this cluster keeps them on
 screen until a key cycle.
 
-FF21CA bytes 1 and 6 (data[1], data[6]) are constant zero and remain
-fault-bitmap candidates for non-DM1 status surfacing — injection of non-zero
-values into FF21CA byte 7 flashed dashboard lamps but never produced a numeric
-code.
+FF21CA data[1] and data[6] remain unknown non-DM1 status candidates. data[6]
+is `0x00` in every one of 425,941 corpus frames; data[1] is described above.
+Injection of non-zero values into FF21CA byte 7 flashed dashboard lamps but
+never produced a numeric code.
 
 
 #### Motor speed encoder
@@ -991,9 +1012,10 @@ the bus goes dark. Code 124 ("Clock fault") and the maintenance codes
 other nodes and interprets the silence as communication errors. The BMS
 is the last node still broadcasting, talking to a dead bus.
 
-SA 0xF4 also acts as a vehicle-side requester (sends 1806E5F4 →
-charger 0xE5). Whether 0xF4 is a separate physical module or a logical
-address inside another ECU's firmware is open.
+SA 0xF4 is no longer treated as a separate vehicle-controller home. It sends
+only `1806E5F4` to the charger at 0xE5, and that frame carries the BMS's
+charger voltage/current request. The documentation therefore treats 0xF4 as a
+BMS charger-interface logical SA rather than an unresolved physical module.
 
 The parts catalog (Table 65, Ref 10) names a separate **OPC (Operator
 Presence Control) timer module** — "UNIT ENGINE SHUT OFF CONTROLLER
@@ -1001,28 +1023,16 @@ TIMER (SEAT AND PARK OPC)" — gating shutdown on the seat switch and
 park brake. The F100D0 heartbeat's OPC-state byte is consistent with
 this module broadcasting its interlock status on CAN.
 
-**Tension with service manual schematic 5.10.** That schematic shows
-the main CAN bus carrying exactly four nodes (MC, BMS, Charger,
-Cluster) with no OPC module drawn. If 0xD0 (and/or 0xF4) frames are
-real, three possibilities:
-
-1. The schematic omits the OPC module — it is a fifth physical CAN
-   node not drawn but present on the harness.
-2. 0xD0 / 0xF4 are *logical* source addresses emitted by one of the
-   four documented nodes (cluster is the natural candidate — it
-   aggregates accessory state).
-3. The frames are bridged from the BMS diagnostics bus by the BMS
-   firmware.
-
-Service manual schematic **5.9 (Seat OPC)** wires the OPC entirely
-through discrete signals (CSS, DIS, CT, charge-drive interlock relay,
-seat switch, PTO bypass, park-brake switch) — no CAN H/L on the OPC
-connector. That favors option (2) or (3) over (1): the OPC module
-documented in the schematic is wired discretely, not on CAN. The
-parts-catalog OPC-timer-module identification may be a different
-component, or may itself be a misidentification. The SA 0xD0 home is
-therefore unresolved and warrants a fresh look at the captures with
-the 4-node bus constraint in mind.
+**Tension with service manual schematic 5.10.** The physical home of SA 0xD0
+remains unresolved. Schematic 5.10 shows the main CAN bus carrying exactly four
+nodes (MC, BMS, Charger, Cluster), with no CAN-speaking OPC module drawn.
+Service manual schematic **5.9 (Seat OPC)** wires the OPC entirely through
+discrete signals (CSS, DIS, CT, charge-drive interlock relay, seat switch, PTO
+bypass, park-brake switch) — no CAN H/L on the OPC connector. That argues
+against a fifth dedicated OPC CAN node and leaves 0xD0 most plausibly as a
+logical source address emitted by one of the documented ECUs, with the cluster
+the natural candidate because it aggregates accessory state. A BMS bridge or
+an undocumented accessory controller cannot be ruled out from captures alone.
 
 
 ## Instrument cluster hardware
@@ -1252,16 +1262,8 @@ order in the manual.
 
 ## Open questions
 
-- **F108 bytes 0..6 mapping below the byte-7 line.** Bytes 0..5
-  bit-to-code mapping is laid out (see F108F3 section) but
-  bit-to-code positions for bytes 0..3 in *every* slot have not been
-  spot-checked against live captures. `bms-fullcharge-102-109-140.asc`
-  confirms bytes 0 and 2 carry fault info; bytes 1, 3, 4, 6 have not
-  been seen nonzero. Single-code captures would replicate the
-  popcount-matches-displayed argument that nailed byte 7
-  unambiguously.
 - **SOH confirmation.** F100F3 data[5] = 0xFA (250 raw × 0.4 %/bit =
-  100 %) is the leading candidate — the only byte across 42 captures
+  100 %) is the leading candidate — the only byte across 73 captures
   that is both constant everywhere and decodes to 100 % under a
   plausible scaling. UDAN's host-side export confirms the BMS does
   publish a labeled `SOH(%)` field (= 100.0 on this pack), so the
@@ -1291,24 +1293,22 @@ order in the manual.
   init/standby/ready states observed.
 - **0x7FD wake frame on the BMS diagnostics bus.** One 8-byte all-zero
   frame at CAN ID `0x7FD` appears on the diagnostics pair within ~10 ms
-  of each key-on (not at key-off). Origin and purpose UNKNOWN; ID is
-- **FF21CA data[1] and data[6] semantics.** Across 435k frames in the
-  corpus, data[6] is 0x00 in every single frame; data[1] is 0x00 in
-  434,670 of 435,045 frames with 375 brief `0x01` excursions. Both
-  remain fault-bitmap candidates. (data[4] is decoded — controller
-  temperature, °C = raw − 40, validated against the mowing capture
-  where it rises 27 → 35 °C over 30 minutes of sustained load.)
-- **SA 0x12 role.** Emits FF21 payload `01 00 00 00 00 00 00 00` in
-  steady state; byte 0 transitions through `0x00` for ~1 s immediately
-  after a key-on 0x41 marker before settling at `0x01`. Distinct from
-  FF21CA from 0xCA despite sharing a PGN.
-- **SA 0xD0 and 0xF4 physical home.** Schematic 5.10 only documents
-  four CAN nodes (MC, BMS, Charger, Cluster). The OPC module shown on
-  schematic 5.9 is wired entirely discretely (no CAN). So either the
-  schematic omits one or more physical nodes, or 0xD0 / 0xF4 are
-  logical SAs emitted by one of the four documented ECUs (cluster is
-  the natural candidate). Worth re-examining the captures with the
-  4-node constraint as the prior.
+  of each key-on (not at key-off). Origin and purpose UNKNOWN. It is an
+  11-bit standard CAN frame, not a J1939 frame.
+- **FF21CA data[1] and data[6] semantics.** Across 425,941 FF21CA
+  frames in 68 captures, data[6] is `0x00` in every frame; data[1] is
+  `0x00` in 425,588 frames and `0x01` in 353 brief excursions. The
+  data[1] nonzero samples appear only in four driving captures, all
+  during low-torque forward motion (torque raw 0..6, RPM 219..1425,
+  range-state bytes 0x14 or 0x24). Neither field co-fires with DM1,
+  but their exact status meanings remain unknown.
+- **SA 0xD0 physical home.** Schematic 5.10 only documents four CAN
+  nodes (MC, BMS, Charger, Cluster), and the OPC module shown on
+  schematic 5.9 is wired entirely discretely (no CAN). SA 0xD0 is
+  therefore likely a logical SA emitted by one of the four documented
+  ECUs, with the cluster the natural candidate, but capture evidence
+  alone cannot rule out a BMS bridge or undocumented accessory
+  controller.
 - **Motor encoder PPR.** Not documented in any manual (service manual,
   CET operator manual, parts catalog, Curtis 1238 manual). The encoder
   connector pinout is now known — signal on pins 2 & 3, supply on
