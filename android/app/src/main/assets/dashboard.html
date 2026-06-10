@@ -24,9 +24,13 @@ h3{font-size:.68em;text-transform:uppercase;letter-spacing:.1em;color:#757575;ma
 .dir{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
 .dirbtn{background:#fff;border-radius:10px;padding:16px 0;text-align:center;font-size:1.8em;font-weight:700;color:#bdbdbd;letter-spacing:.05em;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .dirbtn.on{background:#c8e6c9;color:#1b5e20}
-.pills{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
-.pill{padding:3px 10px;border-radius:20px;font-size:.72em;background:#eee;color:#9e9e9e}
-.pill.on{background:#c8e6c9;color:#1b5e20}
+.bits{margin-bottom:8px;font-size:.7em}
+.bitrow{display:flex;align-items:center;gap:3px;margin-bottom:3px}
+.bithex{font-family:monospace;flex:0 0 52px;color:#616161}
+.bitcell{flex:1 1 0;text-align:center;padding:3px 0;border-radius:4px;background:#eee;color:#9e9e9e;white-space:nowrap;overflow:hidden}
+.bitcell.on{background:#c8e6c9;color:#1b5e20}
+.bitcell.unk{color:#bdbdbd}
+.bitcell.unk.on{background:#ffe0b2;color:#e65100}
 .alert{background:#ffcdd2;color:#b71c1c;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:.9em;font-weight:600}
 .status{border-radius:8px;padding:8px 14px;text-align:center;font-weight:700;font-size:.78em;letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px}
 .status.on{background:#c8e6c9;color:#1b5e20}
@@ -99,7 +103,7 @@ h3{font-size:.68em;text-transform:uppercase;letter-spacing:.1em;color:#757575;ma
 <div class="dir" id="dir"></div>
 <div class="card" style="margin-bottom:8px"><h3>Power Summary</h3><div id="psum"></div></div>
 <div class="g2" id="mid"></div>
-<div class="pills" id="flags"></div>
+<div class="bits" id="flags"></div>
 <div class="g2" id="bot"></div>
 <div id="foot">Connecting…</div>
 <script>
@@ -260,15 +264,25 @@ function update(d){
     kv('MC Temp',ftemp(m.controller_temp_c))+
     kv('Motor Temp',ftemp(m.motor_temp_c))+
     '</div>';
-  var flagDefs=[
-    ['Awake',bst.awake],['Motor',bst.drive_mode],
-    ['BMS',bst.operating],['Precharge',bst.precharge],
-    ['Charging',bst.charging],
-    ['Output Enabled',bst.output_enable],['Main Contactor',bst.main_contactor]
-  ];
-  document.getElementById('flags').innerHTML=flagDefs.map(function(x){
-    return'<div class="pill '+(x[1]?'on':'')+'">'+x[0]+'</div>';
-  }).join('');
+  // F106 bit labels [short, full], index = bit position; null = unknown.
+  var B0_NAMES=[['Output','Output Enabled'],null,['Contactor','Main Contactor'],
+    null,null,null,['Run','Run Context'],['Prechg','Precharge']];
+  var B1_NAMES=[null,null,['NoDrive','Drive Disabled'],['Charge','Charging'],
+    null,['Drive','Drive Mode'],['Awake','Awake'],null];
+  function bitRow(label,val,names){
+    if(val==null)return'';
+    var h='<div class="bitrow"><div class="bithex">'+label+' '+
+      (val<16?'0':'')+val.toString(16).toUpperCase()+'</div>';
+    for(var b=7;b>=0;b--){
+      var on=(val>>b)&1,nm=names[b];
+      h+='<div class="bitcell'+(nm?'':' unk')+(on?' on':'')+
+        '" title="bit '+b+' (0x'+(1<<b).toString(16).toUpperCase()+')'+
+        (nm?' '+nm[1]:'')+'">'+(nm?nm[0]:b)+'</div>';
+    }
+    return h+'</div>';
+  }
+  document.getElementById('flags').innerHTML=
+    bitRow('b0',bst.byte0,B0_NAMES)+bitRow('b1',bst.byte1,B1_NAMES);
   var bot='';
   if(d.charger){
     // chg.flags: Elcon fault flags (FF50E5 byte 4); 0x00 = actively delivering.

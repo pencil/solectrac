@@ -1672,6 +1672,8 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
     bms_block: dict = {}
     if state.bms_state_byte0.value is not None:
         bms_block["state"] = {
+            "byte0":          int(state.bms_state_byte0.value),
+            "byte1":          int(state.bms_state_byte1.value or 0),
             "output_enable":  int(bool(state.bms_output_enable.value)),
             "main_contactor": int(bool(state.bms_main_contactor.value)),
             "operating":      int(bool(state.bms_operating.value)),
