@@ -35,7 +35,7 @@ PGN_F106 = 0xF106   # BMS state / mode (bytes 0,1 = bitmap)
 PGN_F107 = 0xF107   # BMS current limits (charge/discharge)
 PGN_F108 = 0xF108   # BMS active fault bitmap (byte 7 = dashboard codes)
 
-PGN_FF50 = 0xFF50   # charger telemetry (V, A, status)
+PGN_FF50 = 0xFF50   # charger telemetry (V, A, fault flags)
 PGN_FF21 = 0xFF21   # motor telemetry (RPM, torque, state) / dash heartbeat
 PGN_FECA = 0xFECA   # SAE J1939-73 DM1 (Active Diagnostic Trouble Codes)
 PGN_PROP_0600 = 0x0600   # PDU1, src 0xF4 -> dest 0xE5: BMS charger setpoint
@@ -75,9 +75,7 @@ TEMP_OFFSET_C = 40                        # J1939 +40 C offset on temp bytes
 
 PACK_CURRENT_LSB_A = 0.1                  # F100F3 bytes 2-3 BE, 0.1 A/bit
 PACK_CURRENT_BIAS_RAW = 0x7D00            # raw value at 0 A (positive = discharge)
-PACK_VOLTAGE_LSB_V = 0.1                  # F100F3 byte 1 and FF50E5 bytes 1-2 LE
-PACK_VOLTAGE_OFFSET_HI_V = 76.8           # F100F3 variant 0x03 (76.8–102.3 V)
-PACK_VOLTAGE_OFFSET_LO_V = 51.2           # F100F3 variant 0x02 (51.2–76.7 V)
+PACK_VOLTAGE_LSB_V = 0.1                  # F100F3 / FF50E5 bytes 0-1 BE, 0.1 V/bit
 
 # Charger and BMS share the same on-the-wire voltage encoding today, but
 # keep these as their own named bindings so a future divergence has one
@@ -277,9 +275,10 @@ def decode(msg, emit, clear=_noop_clear):
         if pgn == PGN_F100:
             if all(b == 0 for b in data):
                 return "skipped_zero"
-            offset = (PACK_VOLTAGE_OFFSET_LO_V if data[0] == 0x02
-                      else PACK_VOLTAGE_OFFSET_HI_V)
-            volts = data[1] * PACK_VOLTAGE_LSB_V + offset
+            # Pack voltage is one BE-16 field at 0.1 V/bit. The 60-84 V
+            # operating window keeps byte 0 at 0x02/0x03, which can make
+            # it masquerade as a range-selector byte plus 8-bit voltage.
+            volts = be16(data[0], data[1]) * PACK_VOLTAGE_LSB_V
             raw_i = be16(data[2], data[3])
             amps = (raw_i - PACK_CURRENT_BIAS_RAW) * PACK_CURRENT_LSB_A
             emit("pack.voltage_v", volts, "v")
@@ -331,7 +330,7 @@ def decode(msg, emit, clear=_noop_clear):
             emit("bms.state.operating", 1 if b0 & 0x40 else 0, "")
             emit("bms.state.standby", 1 if b0 & 0x80 else 0, "")
             emit("bms.state.charging", 1 if b1 & 0x08 else 0, "")
-            emit("bms.state.charger_present", 1 if b1 & 0x04 else 0, "")
+            emit("bms.state.no_drive", 1 if b1 & 0x04 else 0, "")
             emit("bms.state.drive_mode", 1 if b1 & 0x20 else 0, "")
             emit("bms.state.contactors", 1 if b1 & 0x40 else 0, "")
             return "f106"

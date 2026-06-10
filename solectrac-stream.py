@@ -70,7 +70,7 @@ from solectrac_proto import (
     NUM_CELLS, NUM_TEMPS, TEMP_OFFSET_C,
     PACK_CAPACITY_AH, PACK_NOMINAL_V, PACK_CAPACITY_WH,
     PACK_CURRENT_LSB_A, PACK_CURRENT_BIAS_RAW,
-    PACK_VOLTAGE_LSB_V, PACK_VOLTAGE_OFFSET_HI_V, PACK_VOLTAGE_OFFSET_LO_V,
+    PACK_VOLTAGE_LSB_V,
     CHARGER_V_LSB_V, CHARGER_I_LSB_A, CHGR_FLAG_NAMES,
     RPM_BIAS, LIMIT_CURRENT_LSB_A,
     BMS_FAULT_CODES_BYTE7, BMS_FAULT_CODES_BYTES_0_TO_6,
@@ -349,7 +349,7 @@ class State:
     bms_operating: Channel = field(default_factory=Channel)        # b0 bit 6
     bms_standby: Channel = field(default_factory=Channel)          # b0 bit 7
     bms_charging: Channel = field(default_factory=Channel)         # b1 bit 3
-    bms_charger_present: Channel = field(default_factory=Channel)  # b1 bit 2
+    bms_no_drive: Channel = field(default_factory=Channel)         # b1 bit 2
     bms_drive_mode: Channel = field(default_factory=Channel)       # b1 bit 5
     bms_contactors: Channel = field(default_factory=Channel)       # b1 bit 6
     # F107 BMS current limits
@@ -462,7 +462,7 @@ _NAME_TO_ATTR = {
     "bms.state.operating": "bms_operating",
     "bms.state.standby": "bms_standby",
     "bms.state.charging": "bms_charging",
-    "bms.state.charger_present": "bms_charger_present",
+    "bms.state.no_drive": "bms_no_drive",
     "bms.state.drive_mode": "bms_drive_mode",
     "bms.state.contactors": "bms_contactors",
     # F107 BMS limits
@@ -756,7 +756,7 @@ _BMS_FLAGS: List[Tuple[str, str, str]] = [
     ("bms_contactors",     "ctct",  "green"),
     ("bms_output_enable",  "out",   "green"),
     ("bms_operating",      "OPER",  "bold green"),
-    ("bms_standby",        "PLUG",  "bold cyan"),
+    ("bms_standby",        "PRECHG", "bold cyan"),
     ("bms_charging",       "CHG",   "bold green"),
     ("bms_drive_mode",     "DRIVE", "bold green"),
 ]
@@ -1675,7 +1675,7 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
             "output_enable":  int(bool(state.bms_output_enable.value)),
             "main_contactor": int(bool(state.bms_main_contactor.value)),
             "operating":      int(bool(state.bms_operating.value)),
-            "plug":           int(bool(state.bms_standby.value)),
+            "precharge":      int(bool(state.bms_standby.value)),
             "charging":       int(bool(state.bms_charging.value)),
             "drive_mode":     int(bool(state.bms_drive_mode.value)),
             "awake":          int(bool(state.bms_contactors.value)),

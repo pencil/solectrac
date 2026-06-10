@@ -44,9 +44,7 @@ Signal names use a `domain.name` (or `domain.NN.name`) convention:
                                   36,950 of 36,950 corpus frames; previously
                                   labelled 'pack.flags' but never carried flags.
     pack.v_estimate            20 * mean(min, max) / 1000
-    pack.voltage_v             F100 byte 1: pack voltage, b * 0.1 + offset
-                               (byte 0 selects offset: 0x02 => 51.2 V,
-                                0x03 => 76.8 V)
+    pack.voltage_v             F100 bytes 0-1 BE: pack voltage, raw * 0.1 V/bit
     pack.current_raw           F100 bytes 2-3 (raw biased u16)
     pack.current_a             F100 signed pack current, A
     pack.power_w               F100 derived: pack.voltage_v * pack.current_a (signed; + draw / - charge)
@@ -62,7 +60,7 @@ Signal names use a `domain.name` (or `domain.NN.name`) convention:
     bms.state.standby          F106 byte 0 bit 7 (standby: charger present, no
                                main current; mutex with .operating)
     bms.state.charging         F106 byte 1 bit 3 (charger active)
-    bms.state.charger_present  F106 byte 1 bit 2 (charger plugged in)
+    bms.state.no_drive         F106 byte 1 bit 2 (drive not enabled)
     bms.state.drive_mode       F106 byte 1 bit 5 (motor enabled)
     bms.state.contactors       F106 byte 1 bit 6 (vehicle awake)
     bms.limit.discharge_a      F107 bytes 0-1 BE * 0.01: max discharge current
@@ -161,14 +159,13 @@ Decoder assumptions (verify against the BMS spec before trusting numerically):
                 byte 7 = cell spread in mV (max - min, 1 mV/bit; verified
                          to match the computed (max-min) in 36,950/36,950
                          corpus frames).
-  * PGN 0xF100 byte 1 (data[1]) = pack voltage at the BMS terminals,
-        encoded as 0.1 V/bit with a byte-0-selected offset:
-          byte 0 == 0x02 -> +51.2 V (covers 51.2..76.7 V)
-          byte 0 == 0x03 -> +76.8 V (covers 76.8..102.3 V)
-        Confirmed by linear regression of byte 1 against 20 * mean cell mV
-        across captures spanning both voltage ranges, and cross-checked
-        against the FF50 charger frame which uses the same low/high
-        encoding scheme.
+  * PGN 0xF100 bytes 0-1 BE = pack voltage at the BMS terminals,
+        one u16 at 0.1 V/bit. The 60..84 V operating window keeps byte 0
+        at 0x02/0x03, which can make the field masquerade as a
+        range-selector byte plus 8-bit voltage. Confirmed by linear
+        regression against 20 * mean cell mV across the full voltage
+        range, and cross-checked against the FF50 charger frame which
+        carries the same BE-16 encoding.
   * PGN 0xF100 bytes 2-3 BE = signed pack current at 0.1 A/bit, biased so that
         raw 0x7D00 = 0 A (positive = drawing from pack, negative = charging).
         Cross-validated by the amp-*.asc dashboard-anchored set (1, 18, 35, 42,
@@ -320,7 +317,7 @@ from solectrac_proto import (
     NUM_CELLS, NUM_TEMPS, TEMP_OFFSET_C,
     PACK_CAPACITY_AH, PACK_NOMINAL_V, PACK_CAPACITY_WH,
     PACK_CURRENT_LSB_A, PACK_CURRENT_BIAS_RAW,
-    PACK_VOLTAGE_LSB_V, PACK_VOLTAGE_OFFSET_HI_V, PACK_VOLTAGE_OFFSET_LO_V,
+    PACK_VOLTAGE_LSB_V,
     CHARGER_V_LSB_V, CHARGER_I_LSB_A,
     RPM_BIAS, LIMIT_CURRENT_LSB_A,
     BMS_FAULT_CODES_BYTE7, BMS_FAULT_CODES_BYTES_0_TO_6,
@@ -586,11 +583,12 @@ DECODERS = [
      "subtract 1 for 0-based temp_index"),
     ("pack.temp_spread_c", "F104", "F3", "4", "u8",
      "c", "verified", "= byte 0 - byte 1 in every observed capture"),
-    ("pack.voltage_v", "F100", "F3", "0, 1",
-     "byte1 * 0.1 + offset(byte0: 0x02=>51.2, 0x03=>76.8)",
+    ("pack.voltage_v", "F100", "F3", "0-1",
+     "BE u16 * 0.1",
      "v", "verified",
-     "byte 0 selects the low/high voltage range; anchored by regression vs "
-     "20*mean(cell mV) across both ranges; confirmed by FF50"),
+     "pack terminal voltage; 60-84 V window keeps byte 0 at 0x02/0x03, "
+     "which can masquerade as a range selector. Anchored by regression vs "
+     "20*mean(cell mV); confirmed by FF50"),
     ("pack.current_raw", "F100", "F3", "2-3", "BE u16 (biased)",
      "", "verified", "subtract 0x7D00 for signed amps"),
     ("pack.current_a", "F100", "F3", "2-3", "(BE u16 - 0x7D00) * 0.1",
@@ -637,14 +635,18 @@ DECODERS = [
     ("bms.state.byte1", "F106", "F3", "1", "u8 (raw)",
      "", "verified",
      "BMS state bitmap; bits decoded into bms.state.charging / "
-     "charger_present / drive_mode / contactors below"),
+     "no_drive / drive_mode / contactors below"),
     ("bms.state.charging", "F106", "F3", "1 (bit 3)", "(b1 >> 3) & 1",
      "", "verified",
      "set only while the charger is actively delivering "
      "(charger.flags == 0x00)"),
-    ("bms.state.charger_present", "F106", "F3", "1 (bit 2)", "(b1 >> 2) & 1",
-     "", "verified",
-     "set whenever charger is plugged in (charging or idle)"),
+    ("bms.state.no_drive", "F106", "F3", "1 (bit 2)", "(b1 >> 2) & 1",
+     "", "tentative",
+     "set whenever drive is not enabled (boot before drive engages, key-off "
+     "shutdown, charge sessions); near-complement of drive_mode. Previously "
+     "misread as charger-present: plug.asc shows it set from key-on ~10 s "
+     "before plug-in, and ignition-without-charger-inserted.asc shows it "
+     "set at key-off with no charger anywhere"),
     ("bms.state.drive_mode", "F106", "F3", "1 (bit 5)", "(b1 >> 5) & 1",
      "", "verified",
      "set only in captures with motor (FF21CA) traffic; clear during charging"),
@@ -741,7 +743,7 @@ DECODERS = [
      "(ready) observed across 22,338 frames in 30 captures. The 0x00 frames "
      "(19 total, all in ignition-without-charger-inserted.asc) burst briefly "
      "~0.5-1 s before BMS F106 byte 1 transitions between drive_mode and "
-     "charger_present, suggesting it leads BMS mode changes. Bytes 1..7 of "
+     "no_drive, suggesting it leads BMS mode changes. Bytes 1..7 of "
      "F100D0 are 0xFF (J1939 'not available') in every frame."),
     ("motor.rpm_signed", "FF21", "CA", "2-3, 7",
      "(LE u16 - 0x0C80) * direction(b7)", "rpm", "verified", ""),

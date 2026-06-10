@@ -219,10 +219,10 @@ dual capture):
 | 0       | `00`               | `02`              | Active-alarm count? (matches CSV "Alarm number" col) |
 | 1       | `00`               | `03`              | Status bit — set when charging engages   |
 | 2       | `00`               | `01`              | Static `01` once charger present         |
-| 3–5     | `00 00 00`         | `01 01 02`        | Status bits — set when charging engages  |
-| 6..7    | `00 00`            | `EE..F1, 00`      | **Pack-V LE u16, low byte first** — mirrors FF50 `data[1..2]`. With FF50 status (= mirror byte 5 here) selecting the encoding offset, this is pack terminal V = raw × 0.1 + offset (offset 51.2 V for status 0x02, 76.8 V for 0x03). |
-| 8       | `00`               | `C7`              | **DC charge current low byte** — mirrors FF50 `data[3]`; raw × 0.1 A/bit (19.9 A at `C7`). |
-| 9       | `00`               | dynamic           | UNKNOWN dynamic/status byte — not part of the charger-current mirror |
+| 3–4     | `00 00`            | `01 01`           | Status bits — set when charging engages  |
+| 5–6     | `00 00`            | `02 EE..02 F1`    | **Charger output voltage, BE u16 × 0.1 V** — mirrors FF50 `data[0..1]` (75.0–75.3 V here). Tracks pack V while delivering. |
+| 7–8     | `00 00`            | `00 C7`           | **Charger output current, BE u16 × 0.1 A** — mirrors FF50 `data[2..3]` (19.9 A at `00 C7`). |
+| 9       | `00`               | dynamic           | UNKNOWN dynamic/status byte — not part of the FF50 mirror |
 | 10      | `00..D7`           | `00..D7`          | **1-Hz tick counter** (rolls 0x00..0xFF) |
 | 11      | `FF` → `53..56`    | `53..56`          | Slowly-varying u8 (semantics UNKNOWN; possibly time-remaining or temp) |
 | 12      | `FF`               | `00..FF` (varies) | UNKNOWN dynamic u8 (124 unique values in 144 polls) |
@@ -234,10 +234,10 @@ dual capture):
 | 26–30   | `FF`               | `FF`              | True sentinels (constant)                |
 
 **Bytes 5–8 mirror FF50 `data[0..3]`** — CONFIRMED by simultaneous
-diagnostic-port (0x4000) and broadcast (FF50E5) frame capture. The
-status byte (mirror byte 5) selects the pack-V encoding offset for the
-u16 LE at mirror bytes 6..7 (same low/high variant scheme as F100F3
-byte 0); see DOCUMENTATION.md §FF50E5 for the full table.
+diagnostic-port (0x4000) and broadcast (FF50E5) frame capture: the
+Elcon status frame's BE-16 output voltage (bytes 5–6) and BE-16 output
+current (bytes 7–8). The FF50 fault-flag byte (`data[4]`) is **not**
+mirrored; see DOCUMENTATION.md §FF50E5 for the full frame layout.
 
 **Implication for the UDAN `0x87 = DID 0x4000` mapping.** Byte 0 plausibly
 mirrors the CSV "Alarm number" column (count of active alarms), and the
@@ -464,7 +464,7 @@ capture):
 | `0x2830` top-1 max-temp tuple              | `F104F3` data[0] + data[2]           | Max module °C + 1-based probe number      |
 | `0x2838` top-1 min-temp tuple              | `F104F3` data[1] + data[3]           | Min module °C + 1-based probe number      |
 | `0x4000` byte 0 (active-alarm count, TENTATIVE) | `F108F3` (active fault bitmap)  | `F108F3` is the authoritative broadcast bitmap; `0x4000`'s relationship to alarms is now questioned — see the `0x4000` section above. |
-| `0x4000` bytes 5..8 (charger telemetry block) | `FF50E5` `data[0..3]`         | Variant-tagged pack V (LE u16, status-selected offset) + DC current low byte (× 0.1 A/bit); `0x4000` byte 9 remains UNKNOWN |
+| `0x4000` bytes 5..8 (charger telemetry block) | `FF50E5` `data[0..3]`         | Charger output V (BE u16 × 0.1 V) + output I (BE u16 × 0.1 A); the FF50 fault-flag byte is not mirrored; `0x4000` byte 9 remains UNKNOWN |
 
 The diagnostic-port DIDs expose the **full** BMS internal state (cell
 extrema as top-4 sorted tuples, calibration tables, identity blocks,

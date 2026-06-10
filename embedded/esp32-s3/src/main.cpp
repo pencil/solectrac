@@ -93,9 +93,7 @@
 #define TEMP_OFFSET_C           40
 #define PACK_CURRENT_BIAS_RAW   0x7D00   // raw u16 value at 0 A
 #define PACK_CURRENT_LSB_A      0.1f     // A per bit
-#define PACK_VOLTAGE_LSB_V      0.1f     // V per bit
-#define PACK_VOLTAGE_OFFSET_HI_V 76.8f    // F100F3 variant 0x03 / FF50 charger offset (high range, 76.8–102.3 V)
-#define PACK_VOLTAGE_OFFSET_LO_V 51.2f    // F100F3 variant 0x02 offset (low range, 51.2–76.7 V); variant byte acts as 9th MSB on data[1]
+#define PACK_VOLTAGE_LSB_V      0.1f     // V per bit (F100F3 / FF50E5 bytes 0-1 BE)
 #define RPM_BIAS                0x0C80   // raw u16 value at 0 RPM
 #define LIMIT_CURRENT_LSB_A     0.01f    // A per bit for F107 limits
 #define LIMIT_POWER_EXTRA_LSB_W 10.0f    // W per bit for F107 charge allowance above 100 A baseline
@@ -160,13 +158,13 @@ struct BmsStateFlags {
     bool operating       : 1;
     bool standby         : 1;
     bool charging        : 1;
-    bool charger_present : 1;
+    bool no_drive        : 1;
     bool drive_mode      : 1;
     bool awake           : 1;
     bool valid           : 1;
     BmsStateFlags() : output_enable(false), main_contactor(false),
         operating(false), standby(false), charging(false),
-        charger_present(false), drive_mode(false), awake(false),
+        no_drive(false), drive_mode(false), awake(false),
         valid(false) {}
 };
 
@@ -389,9 +387,10 @@ void decodeCAN(uint32_t can_id, const uint8_t* raw, uint8_t len) {
             uint16_t raw_cur = be16(d[2], d[3]);
             // Sign convention: positive = charging, negative = discharging.
             float amps  = -((int32_t)raw_cur - PACK_CURRENT_BIAS_RAW) * PACK_CURRENT_LSB_A;
-            // d[0] selects voltage range: 0x03 = high (≥76.8 V), 0x02 = low (<76.8 V).
-            float offset = (d[0] == 0x02) ? PACK_VOLTAGE_OFFSET_LO_V : PACK_VOLTAGE_OFFSET_HI_V;
-            float volts = d[1] * PACK_VOLTAGE_LSB_V + offset;
+            // Pack voltage is one BE-16 field at 0.1 V/bit. The 60-84 V
+            // operating window keeps d[0] at 0x02/0x03, which can make it
+            // masquerade as a range-selector byte plus 8-bit voltage.
+            float volts = be16(d[0], d[1]) * PACK_VOLTAGE_LSB_V;
             g_pack.voltage_v   = volts;
             g_pack.current_raw = raw_cur;
             g_pack.current_a   = amps;
@@ -444,7 +443,7 @@ void decodeCAN(uint32_t can_id, const uint8_t* raw, uint8_t len) {
             g_bms_state.operating      = (d[0] & 0x40) != 0;
             g_bms_state.standby        = (d[0] & 0x80) != 0;
             g_bms_state.charging       = (d[1] & 0x08) != 0;
-            g_bms_state.charger_present= (d[1] & 0x04) != 0;
+            g_bms_state.no_drive       = (d[1] & 0x04) != 0;
             g_bms_state.drive_mode     = (d[1] & 0x20) != 0;
             g_bms_state.awake          = (d[1] & 0x40) != 0;
             g_bms_state.valid          = true;
@@ -677,9 +676,9 @@ String buildJson(bool pretty = true, bool minimal = false) {
         st["output_enable"]  = g_bms_state.output_enable  ? 1 : 0;
         st["main_contactor"] = g_bms_state.main_contactor ? 1 : 0;
         st["operating"]      = g_bms_state.operating      ? 1 : 0;
-        st["plug"]           = g_bms_state.standby        ? 1 : 0;
+        st["precharge"]      = g_bms_state.standby        ? 1 : 0;
         st["charging"]       = g_bms_state.charging       ? 1 : 0;
-        st["charger_present"]= g_bms_state.charger_present? 1 : 0;
+        st["no_drive"]       = g_bms_state.no_drive       ? 1 : 0;
         st["drive_mode"]     = g_bms_state.drive_mode     ? 1 : 0;
         st["awake"]          = g_bms_state.awake          ? 1 : 0;
     }
