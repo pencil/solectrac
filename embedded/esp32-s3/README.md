@@ -201,6 +201,45 @@ standard Arduino-ESP32 offsets — the same four images, at the same offsets, th
 > If `write_flash` can't connect, hold **BOOT-0**, tap **RST**, release
 > **BOOT-0** to force the board into download mode, then retry.
 
+To override the credentials in a Docker build, pass them as build args:
+
+```bash
+set -a; source embedded/esp32-s3/.env; set +a
+docker build -f embedded/esp32-s3/Dockerfile \
+    --build-arg AP_SSID="$AP_SSID" --build-arg AP_PASS="$AP_PASS" \
+    --build-arg MDNS_NAME="$MDNS_NAME" \
+    --build-arg WIFI_SSID="$WIFI_SSID" --build-arg WIFI_PASS="$WIFI_PASS" \
+    -t solectrac-fw .
+```
+
+## Customizing the WiFi AP and mDNS hostname (optional)
+
+The board runs in dual AP+STA mode: it broadcasts its own hotspot (so it's
+reachable in the field) and also tries to join a home network for bench use.
+By default the hotspot is **SSID `tractor` / password `electricity`** and the
+board advertises itself as **`tractor.local`** — if you don't do anything here,
+the build is unchanged.
+
+To override the AP credentials, mDNS hostname (and/or the bench network), copy
+the template to a gitignored `.env` and set values:
+
+```bash
+cp .env.example .env
+# set a strong AP_PASS (WPA2 requires 8-63 chars), e.g.:
+python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_letters+string.digits) for _ in range(24)))"
+```
+
+Then source it before building (native or Docker):
+
+```bash
+set -a; source .env; set +a
+pio run -e lilygo_t2can          # native; or use the Docker --build-arg form above
+```
+
+`AP_SSID`/`AP_PASS`/`MDNS_NAME` are injected at build time by
+`inject_build_overrides.py` (a no-op when the env vars are unset), so the
+default build is unchanged.
+
 ## Endpoints
 
 Once the board is on the network it advertises itself as `tractor.local`

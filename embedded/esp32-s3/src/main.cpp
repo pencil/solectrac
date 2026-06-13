@@ -74,9 +74,21 @@
 
 // WiFi runs in dual AP+STA mode: the board always broadcasts its own hotspot
 // (so it's reachable in the field), and concurrently tries to join the
-// configured home network for bench use. AP IP is 192.168.4.1.
+// configured home network for bench use. AP IP is 192.168.4.1. MDNS_NAME is
+// the mDNS hostname the board advertises (MDNS_NAME.local).
+//
+// AP_SSID/AP_PASS/MDNS_NAME default to the values below. They can optionally
+// be overridden at build time via environment variables (see .env.example);
+// when unset, the build is unchanged.
+#ifndef AP_SSID
 #define AP_SSID "tractor"
+#endif
+#ifndef AP_PASS
 #define AP_PASS "electricity"
+#endif
+#ifndef MDNS_NAME
+#define MDNS_NAME "tractor"
+#endif
 
 // ── J1939 source addresses ────────────────────────────────────────────────────
 
@@ -1205,7 +1217,7 @@ void setup() {
     // because phones generally don't do mDNS over an AP with no internet.
     if (g_ap_running) dns_server.start(53, "*", WiFi.softAPIP());
 
-    MDNS.begin("tractor");
+    MDNS.begin(MDNS_NAME);
 
     server.on("/",     handleRoot);
     server.on("/json", handleJson);
