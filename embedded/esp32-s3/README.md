@@ -104,11 +104,22 @@ no-ops on that board.
 
 ## Setting up on a new computer
 
-1. **Install PlatformIO** — either the VS Code extension or the standalone CLI:
+> **Prefer a reproducible build?** Skip straight to "Building with Docker"
+> below — it sidesteps all host Python/toolchain issues and is the recommended
+> path on macOS.
+
+1. **Install PlatformIO** into an isolated Python environment:
 
    ```bash
-   pip install platformio          # or: brew install platformio
+   python3.13 -m venv ~/.venvs/pio
+   ~/.venvs/pio/bin/pip install platformio
+   # then use ~/.venvs/pio/bin/pio, or add it to PATH
    ```
+
+   > ⚠️ **Use Python 3.11–3.13, not 3.14.** PlatformIO 6.1.x segfaults during
+   > package post-install on Python 3.14. `brew install platformio` currently
+   > pulls in Python 3.14 as a dependency and fails for this reason — install
+   > into a 3.13 venv (above), or use Docker.
 
 2. **Clone the repo and enter this folder**:
 
@@ -151,6 +162,44 @@ close it:
 ```bash
 lsof /dev/cu.usbmodem*
 ```
+
+## Building with Docker
+
+The `Dockerfile` builds the firmware in a pinned, reproducible environment
+(Python 3.13 + PlatformIO 6.1.19), avoiding host toolchain issues entirely.
+**Build the firmware in Docker, then flash from the host** — Docker Desktop on
+macOS cannot reach the board's USB serial port.
+
+The build context is the **repo root** (the firmware embeds the Android
+`dashboard.html`). From the repo root:
+
+```bash
+docker build -f embedded/esp32-s3/Dockerfile -t solectrac-fw .
+```
+
+Extract the build artifacts onto the host:
+
+```bash
+docker run --rm -v "$PWD/out:/out" solectrac-fw
+# -> out/{bootloader,partitions,boot_app0,firmware}.bin
+```
+
+Then flash from the host with `esptool` (from a Python 3.13 venv). These are the
+standard Arduino-ESP32 offsets — the same four images, at the same offsets, that
+`pio run -t upload` writes:
+
+```bash
+~/.venvs/pio/bin/pip install esptool
+~/.venvs/pio/bin/esptool --chip esp32s3 --port /dev/cu.usbmodemXXXX \
+    --baud 921600 write_flash \
+    0x0     out/bootloader.bin \
+    0x8000  out/partitions.bin \
+    0xe000  out/boot_app0.bin \
+    0x10000 out/firmware.bin
+```
+
+> If `write_flash` can't connect, hold **BOOT-0**, tap **RST**, release
+> **BOOT-0** to force the board into download mode, then retry.
 
 ## Endpoints
 
