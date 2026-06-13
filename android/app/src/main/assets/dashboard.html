@@ -104,8 +104,8 @@ h3{font-size:.68em;text-transform:uppercase;letter-spacing:.1em;color:#757575;ma
 <div class="dir" id="dir"></div>
 <div class="card" style="margin-bottom:8px"><h3>Power Summary</h3><div id="psum"></div></div>
 <div class="g2" id="mid"></div>
-<div class="bits" id="flags"></div>
 <div class="g2" id="bot"></div>
+<div class="card" style="margin-bottom:8px"><h3>BMS State (F106)</h3><div class="bits" id="flags" style="margin-bottom:0"></div></div>
 <div id="foot">Connecting…</div>
 <script>
 const f=(v,d=1)=>v==null?'–':v.toFixed(d);
@@ -284,7 +284,8 @@ function update(d){
     return h+'</div>';
   }
   document.getElementById('flags').innerHTML=
-    bitRow('b0',bst.byte0,B0_NAMES)+bitRow('b1',bst.byte1,B1_NAMES);
+    bitRow('b0',bst.byte0,B0_NAMES)+bitRow('b1',bst.byte1,B1_NAMES)
+    ||kv('State','–');
   var bot='';
   // Charger card always renders; fields show '–' while the charger
   // (FF50E5) or BMS command (1806E5F4) is silent or stale.
