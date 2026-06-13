@@ -320,7 +320,7 @@ function update(d){
   // (FF50E5) or BMS command (1806E5F4) is silent or stale.
   // chg.flags: Elcon fault flags (FF50E5 byte 4); 0x00 = actively delivering.
   var CF_NAMES=[['Fault','Hardware Fault'],['Temp','Over-Temperature'],
-    ['NoAC','No AC Input'],['NoOut','Output Not Connected'],
+    ['NoAC','No AC Input'],['NoDC','No DC Delivery'],
     ['NoCmd','No BMS Command'],null,null,null];
   var dcw=(p.voltage_v!=null&&chg.current_a!=null)
     ? Math.round(p.voltage_v*chg.current_a)+' W' : '–';
