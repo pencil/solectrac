@@ -3,3 +3,6 @@
 
 # Firmware artifacts extracted from the Docker build
 out/
+
+# Build secrets (AP/WiFi credentials). Copy .env.example -> .env.
+.env

@@ -36,11 +36,21 @@ COPY android/app/src/main/assets/dashboard.html ./src/dashboard.html
 
 # WIFI_SSID / WIFI_PASS (the home network the board also joins for bench use)
 # are embedded at compile time; the build needs them set, so default to
-# placeholders. Override via --build-arg.
+# placeholders. AP_SSID / AP_PASS / MDNS_NAME optionally override the hotspot
+# the board broadcasts and its mDNS hostname — leave them empty to keep the
+# firmware's built-in defaults, so the default build is unchanged. Override any
+# of these via --build-arg, e.g. `set -a; source embedded/esp32-s3/.env; set +a`
+# then --build-arg AP_PASS="$AP_PASS".
 ARG WIFI_SSID=placeholder
 ARG WIFI_PASS=placeholder
+ARG AP_SSID=
+ARG AP_PASS=
+ARG MDNS_NAME=
 ENV WIFI_SSID=${WIFI_SSID}
 ENV WIFI_PASS=${WIFI_PASS}
+ENV AP_SSID=${AP_SSID}
+ENV AP_PASS=${AP_PASS}
+ENV MDNS_NAME=${MDNS_NAME}
 
 # Build for the LilyGo T-2CAN. This downloads the espressif32 platform and
 # Xtensa toolchain on first run and caches them in the image layer.
