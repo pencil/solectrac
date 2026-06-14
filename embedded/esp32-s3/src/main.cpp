@@ -28,7 +28,7 @@
 #include "driver/twai.h"
 #if defined(BOARD_LILYGO_T2CAN)
   #include <SPI.h>
-  #include <ACAN2517FD.h>
+  #include <ACAN2515.h>
 #endif
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -49,17 +49,24 @@
   #define LED_IS_NEOPIXEL  1
 #elif defined(BOARD_LILYGO_T2CAN)
   // LilyGo T-2CAN exposes both CAN ports: CAN B is the ESP32-S3's native TWAI
-  // on GPIO 6/7; CAN A is an MCP2518FD on SPI. We stream both buses out
-  // over socketcand as channels can0 (TWAI) and can1 (MCP2518FD).
+  // on GPIO 6/7; CAN A is an MCP2515 on SPI. We stream both buses out
+  // over socketcand as channels can0 (TWAI) and can1 (MCP2515).
   // pin_config.h documents no user-controllable LED.
   #define CAN_TX_PIN       GPIO_NUM_7
   #define CAN_RX_PIN       GPIO_NUM_6
-  #define MCP2518_CS_PIN   GPIO_NUM_10
-  #define MCP2518_SCK_PIN  GPIO_NUM_12
-  #define MCP2518_MOSI_PIN GPIO_NUM_11
-  #define MCP2518_MISO_PIN GPIO_NUM_13
-  #define MCP2518_INT_PIN  GPIO_NUM_8
-  #define HAS_MCP2518FD    1
+  #define MCP2515_CS_PIN   GPIO_NUM_10
+  #define MCP2515_SCK_PIN  GPIO_NUM_12
+  #define MCP2515_MOSI_PIN GPIO_NUM_11
+  #define MCP2515_MISO_PIN GPIO_NUM_13
+  #define MCP2515_INT_PIN  GPIO_NUM_8
+  // Active-low hardware reset, wired to the MCP2515 RESET pin. The ESP32 must
+  // drive this high to bring the chip out of reset; left undriven the MCP2515
+  // never answers SPI and ACAN2515::begin() returns kNoMCP2515 (err bit 0).
+  #define MCP2515_RST_PIN  GPIO_NUM_9
+  // MCP2515 crystal frequency. The LilyGo T-2CAN populates a 16 MHz can (the
+  // stock firmware calls setBitrate() with the default 16 MHz clock).
+  #define MCP2515_QUARTZ_HZ (16UL * 1000UL * 1000UL)
+  #define HAS_MCP2515      1
   #define LED_IS_NEOPIXEL  0
 #else
   #error "Define a board: BOARD_ADAFRUIT_FEATHER_S3 or BOARD_LILYGO_T2CAN"
@@ -256,15 +263,10 @@ uint32_t    g_last_frame_ms  = 0;   // millis() at last received frame
 bool        g_can_initialized = false;
 bool        g_ap_running      = false;
 
-#if defined(HAS_MCP2518FD)
+#if defined(HAS_MCP2515)
 bool        g_mcp_initialized = false;
 uint32_t    g_mcp_init_err    = 0xFFFFFFFFUL;   // sentinel: never attempted
 uint32_t    g_mcp_frames_rx   = 0;
-// Raw probe of OSC_REGISTER (0xE00) before/after manual reset. If SPI is alive
-// we expect non-FF/non-00. 0xFF = MISO floating / chip not selected; 0x00 =
-// MISO grounded / chip dead.
-uint8_t     g_mcp_probe_pre  = 0xAA;
-uint8_t     g_mcp_probe_post = 0xAA;
 #endif
 
 // Session energy tracking (integrated power since boot)
@@ -606,13 +608,11 @@ String buildJson(bool pretty = true, bool minimal = false) {
     if (!minimal) can["frames_decoded"] = g_frames_decoded;
     if (g_frames_rx > 0)
         can["last_frame_age_s"] = (millis() - g_last_frame_ms) / 1000.0;
-#if defined(HAS_MCP2518FD)
-    auto mcp = can["mcp2518fd"].to<JsonObject>();
+#if defined(HAS_MCP2515)
+    auto mcp = can["mcp2515"].to<JsonObject>();
     mcp["initialized"] = g_mcp_initialized;
     mcp["init_err"]    = g_mcp_init_err;
     mcp["frames_rx"]   = g_mcp_frames_rx;
-    mcp["probe_pre"]   = g_mcp_probe_pre;
-    mcp["probe_post"]  = g_mcp_probe_post;
 #endif
 
     // Pack
@@ -892,14 +892,14 @@ void slcanPoll() {
 //             channel='can0'
 //
 // One slot per channel — a client picks its bus with `< open canN >`. On the
-// T-2CAN both buses are streamed (can0 = TWAI, can1 = MCP2518FD); on the
+// T-2CAN both buses are streamed (can0 = TWAI, can1 = MCP2515); on the
 // Feather only can0 is available. Two clients can be connected at once on the
 // T-2CAN, one per channel. A new connection that arrives while every slot is
 // taken is rejected (the existing clients are kept).
 
 #define SOCKETCAND_PORT 28600
 
-#if defined(HAS_MCP2518FD)
+#if defined(HAS_MCP2515)
   #define SOCKETCAND_NUM_CHANNELS 2
 #else
   #define SOCKETCAND_NUM_CHANNELS 1
@@ -923,12 +923,12 @@ struct SocketcandSlot {
 static WiFiServer     socketcand_server(SOCKETCAND_PORT);
 static SocketcandSlot socketcand_slots[SOCKETCAND_NUM_CHANNELS];
 
-#if defined(HAS_MCP2518FD)
-// MCP2518FD: external CAN-FD controller wired to SPI. We run it in classic CAN
-// 2.0B mode at 250 kbit/s to match the J1939 main bus. The library's RX FIFO
-// is drained from loop(); frames are forwarded to socketcand as channel can1.
-// Crystal frequency is board-dependent — flip to OSC_20MHz if can1 stays silent.
-static ACAN2517FD g_mcp(MCP2518_CS_PIN, SPI, MCP2518_INT_PIN);
+#if defined(HAS_MCP2515)
+// MCP2515: external classic-CAN 2.0B controller wired to SPI, run at 250 kbit/s
+// to match the J1939 main bus. The library's RX buffers are drained from
+// loop(); frames are forwarded to socketcand as channel can1. Crystal frequency
+// is board-dependent — see MCP2515_QUARTZ_HZ if can1 stays silent.
+static ACAN2515 g_mcp(MCP2515_CS_PIN, SPI, MCP2515_INT_PIN);
 #endif
 
 void socketcandSendFrame(const twai_message_t& msg, int8_t channel) {
@@ -1165,55 +1165,32 @@ void setup() {
     socketcand_server.setNoDelay(true);
     MDNS.addService("socketcand", "tcp", SOCKETCAND_PORT);
 
-#if defined(HAS_MCP2518FD)
-    // Do NOT pass the CS pin to SPI.begin — Arduino-ESP32 would attach it as
-    // hardware-SS and fight the library's software-CS control, leaving the
-    // chip never selected. The library calls pinMode(CS, OUTPUT) in initCS().
-    SPI.begin(MCP2518_SCK_PIN, MCP2518_MISO_PIN, MCP2518_MOSI_PIN);
-
-    // Deassert CS by hand before any SPI traffic.
-    pinMode(MCP2518_CS_PIN, OUTPUT);
-    digitalWrite(MCP2518_CS_PIN, HIGH);
-    delay(10);   // give the MCP2518FD's POR/OST a chance to finish
-
-    // Helper: SPI read of a single byte at a 12-bit register address.
-    auto mcp_read8 = [](uint16_t addr) -> uint8_t {
-        SPI.beginTransaction(SPISettings(800UL * 1000UL, MSBFIRST, SPI_MODE0));
-        digitalWrite(MCP2518_CS_PIN, LOW);
-        SPI.transfer((uint8_t)(0x30 | ((addr >> 8) & 0x0F)));   // READ op
-        SPI.transfer((uint8_t)(addr & 0xFF));
-        uint8_t v = SPI.transfer(0x00);
-        digitalWrite(MCP2518_CS_PIN, HIGH);
-        SPI.endTransaction();
-        return v;
-    };
-
-    // Probe OSC_REGISTER before any reset.
-    g_mcp_probe_pre = mcp_read8(0xE00);
-
-    // Issue an MCP2518FD software reset (instruction 0x0000).
-    SPI.beginTransaction(SPISettings(800UL * 1000UL, MSBFIRST, SPI_MODE0));
-    digitalWrite(MCP2518_CS_PIN, LOW);
-    SPI.transfer16(0x0000);
-    digitalWrite(MCP2518_CS_PIN, HIGH);
-    SPI.endTransaction();
+#if defined(HAS_MCP2515)
+    // Release the MCP2515 from hardware reset before any SPI traffic. RESET is
+    // active-low; pulse it low then high and let the oscillator settle. Without
+    // this the chip stays held in reset and begin() returns kNoMCP2515.
+    pinMode(MCP2515_RST_PIN, OUTPUT);
+    digitalWrite(MCP2515_RST_PIN, LOW);
+    delay(10);
+    digitalWrite(MCP2515_RST_PIN, HIGH);
     delay(10);
 
-    // Probe again after reset.
-    g_mcp_probe_post = mcp_read8(0xE00);
+    // Do NOT pass the CS pin to SPI.begin — Arduino-ESP32 would attach it as
+    // hardware-SS and fight the library's software-CS control. The ACAN2515
+    // library drives CS itself (it calls pinMode(CS, OUTPUT) in begin()).
+    SPI.begin(MCP2515_SCK_PIN, MCP2515_MISO_PIN, MCP2515_MOSI_PIN);
 
-    ACAN2517FDSettings mcp_cfg(
-        ACAN2517FDSettings::OSC_20MHz,
-        250UL * 1000UL,
-        DataBitRateFactor::x1);
-    mcp_cfg.mRequestedMode = ACAN2517FDSettings::Normal20B;   // classic CAN 2.0B
+    // ACAN2515Settings(quartz_Hz, bitrate). begin() issues the MCP2515 reset,
+    // configures bit timing, installs the ISR, and returns 0 on success (a
+    // non-zero code is a bitmask of configuration errors — e.g. an impossible
+    // bitrate for the given crystal). Default mode is NormalMode (2.0B); the
+    // default filters accept every frame, which is what we want for a sniffer.
+    ACAN2515Settings mcp_cfg(MCP2515_QUARTZ_HZ, 250UL * 1000UL);
     g_mcp_init_err    = g_mcp.begin(mcp_cfg, [] { g_mcp.isr(); });
     g_mcp_initialized = (g_mcp_init_err == 0);
-    Serial.printf("MCP2518FD begin: err=0x%08lX probe pre=0x%02X post=0x%02X (osc=%u MHz, CS=%d INT=%d SCK=%d MOSI=%d MISO=%d)\n",
-        (unsigned long)g_mcp_init_err,
-        g_mcp_probe_pre, g_mcp_probe_post,
-        (unsigned)(mcp_cfg.sysClock() / 1000000UL),
-        MCP2518_CS_PIN, MCP2518_INT_PIN, MCP2518_SCK_PIN, MCP2518_MOSI_PIN, MCP2518_MISO_PIN);
+    Serial.printf("MCP2515 begin: err=0x%08lX (quartz=%lu Hz, CS=%d INT=%d RST=%d SCK=%d MOSI=%d MISO=%d)\n",
+        (unsigned long)g_mcp_init_err, (unsigned long)MCP2515_QUARTZ_HZ,
+        MCP2515_CS_PIN, MCP2515_INT_PIN, MCP2515_RST_PIN, MCP2515_SCK_PIN, MCP2515_MOSI_PIN, MCP2515_MISO_PIN);
 #endif
 
     bleInit();
@@ -1228,9 +1205,9 @@ void loop() {
             socketcandSendFrame(msg, /*channel=*/0);
         }
     }
-#if defined(HAS_MCP2518FD)
+#if defined(HAS_MCP2515)
     if (g_mcp_initialized) {
-        CANFDMessage frame;
+        CANMessage frame;
         while (g_mcp.receive(frame)) {
             g_mcp_frames_rx++;
             twai_message_t fwd = {};
