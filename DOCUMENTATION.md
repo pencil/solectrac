@@ -705,7 +705,18 @@ against `asc/bms-error-codes/idle-no-bms.asc`).
 Every per-bit assignment below was established by spoofing F108 with
 each bit set in isolation and reading the resulting code off the
 dashboard. The layout is non-uniform — different bytes use different
-bits-per-code rates:
+bits-per-code rates.
+
+A second anchoring against the iBMS PC Utility's `Alarm state 0x87`
+XLSX history export (paired with 4 Jun 14 state captures at Δ ≤ 1 s)
+confirms the manual codes against iBMS column names: byte 0 bit 4
+(code 102) ↔ `Ch[g/Dchg]PackOV` columns; byte 2 bit 2 (code 109)
+co-fires; byte 5 bit 0 (code 124 "Clock fault" in manual) ↔
+`ChargerComm` in iBMS — vendor relabels; byte 7 bits 1/3/4/5/7 ↔
+`ChargerComm` downstream cluster. The CSV column ordering is
+categorical (sorted by fault family) and many CSV columns share the
+same F108 bit — the bitmap distinguishes physical fault, the column
+distinguishes display context (charge vs discharge mode).
 
 | Byte | Encoding         | Codes                                  |
 |------|------------------|----------------------------------------|

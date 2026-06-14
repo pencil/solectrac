@@ -264,29 +264,40 @@ its column ordering alone cannot anchor the byte order.
 ### Charging — DID cluster `0x0900` + `0x0901` + `0x0902` (UDAN `0x94`)
 
 Three DIDs polled in parallel during the Charge-info / BMS tab. Combined
-35 data bytes. The iBMS internally represents this cluster as a 9-field
-record:
+35 data bytes. The iBMS PC Utility's History → XLSX export confirms the
+`Charging 0x94` sheet has exactly **17 columns** (vendor-anchored, from
+a 10,536-row × 7-day export):
 
-| Field # | Name                      |
-|---------|---------------------------|
-| 1       | `ChargeConnect` (enum)    |
-| 2       | `ChargedTime`             |
-| 3       | `RequestChargeVoltMax`    |
-| 4       | `RequestChargeCurrentMax` |
-| 5       | `OutputVoltage`           |
-| 6       | `OutputCurrent`           |
-| 7       | `ErrorStatus`             |
-| 8       | `ChgStartDiagFault`       |
-| 9       | `DchgStartDiagFault`      |
+| Col | Name (vendor)                | Sample (active charge) | Dynamic? |
+|-----|------------------------------|------------------------|----------|
+| 0   | Time                         | timestamp              | —        |
+| 1   | Charger conn.                | `AC Chg`               | enum     |
+| 2   | Charging elapsed time        | 0..50292 s             | counter  |
+| 3   | Charge Req. Volt.(V)         | 0 or 84.6              | binary   |
+| 4   | Charge Req. Curr.(A)         | 8 distinct, 0..39      | dynamic  |
+| 5   | Charger Output Volt.(V)      | 151 distinct, 0..83.1  | dynamic  |
+| 6   | Charger Output Curr.(A)      | 42 distinct, 0..39     | dynamic  |
+| 7   | Charger fault stat.          | blank                  | —        |
+| 8   | S2 state                     | `Open`                 | constant |
+| 9   | CC Resistance                | `65535` (Invalid)      | sentinel |
+| 10  | CC2 Resistance               | `65535` (Invalid)      | sentinel |
+| 11  | CP freq.                     | 0                      | constant |
+| 12  | CP duty                      | 0                      | constant |
+| 13  | Elec. lock state             | `Unlocked`             | constant |
+| 14–16 | Charger port temp. 01/02/03 | `Invalid`             | sentinel |
 
-CSV columns the earlier scope listed but that don't belong to this
-cluster (CC/CC2 Resistance, CP freq./duty, lock state, 3× port temp,
-S2 state) are populated by other DIDs / parsers.
+So on this BMS variant only **5 columns ever change** (elapsed time +
+Charge Req. V/A + Charger Output V/A). The other 12 are either enum
+constants or sentinels. **No "CC voltage" or "CC2 voltage" column exists
+in `Charging 0x94`** — the screenshot-15 `CC voltage = 4.993 V` cell is
+sourced from a different DID (almost certainly `System state 0x93`,
+which has 51 columns including HV1..HV5 / DI1-2 / SW1-2 / Power volt /
+Hall calibration etc.) or rendered from a non-CSV-exposed field.
 
 | DID      | Data (B) | Idle sample                                       | Active-charge behavior                           |
 |----------|----------|---------------------------------------------------|--------------------------------------------------|
 | `0x0900` | 7        | `01 00 01 00 00 00 00`                            | **Invariant** across multi-hour active charging on both L1 and L2. Byte 0 = `0x01` = "AC Chg" enum (CSV "Charger conn." column) — CONFIRMED. End-of-charge / unplug transitions byte 0 to `0x00`; post-CV the L2 trace also shows `00 00 01 00 00 00 00` (byte 2 still `0x01` while bytes 0..1 clear). Remaining bytes are TENTATIVELY the categorical enums that stay at their pack-default values on this BMS variant (Charger fault stat. = "Status", S2 state = "Open", Elec. lock state = "Unlocked"). |
-| `0x0901` | 14       | `33 0c 00 00 33 0c 00 00 00 00 ff ff ff ff`       | Bytes 0..1 BE and 4..5 BE are paired dynamic u16 values in a narrow 13100..13290 raw band across L1 (110 V) and L2 (240 V) — **invariant in mains**, ruling out any mains-V interpretation. Weak correlation during active charge: vs pack V r=0.41 L2 / 0.10 L1; vs OBC V r=0.42 L2; vs SOC r=0.42. The 9-field iBMS `ChargeMessage` record (above) has no slot these bytes map cleanly into, and the numeric match against the screenshot's `CC voltage = 4.993 V` (via `raw × 24.9/65535`) doesn't line up with any field the iBMS decodes from this cluster. Treating these as **opaque BMS-internal ADC counts that the iBMS UI doesn't surface from `0x094`** — possibly an internal reference/calibration readback. Both u16s are quantized to 11-LSB steps. Bytes 3 and 7 cycle through `{0x00, 0x0B, 0x16}` (3-state on L2; only `{00, 0B}` was observed on L1), mirrored across the two u16 blocks (byte 3 == byte 7 in ~71 % of samples) — heartbeat or paired status, UNKNOWN. Trailing 4 bytes (10..13) are **`FF FF FF FF` = CC Resistance + CC2 Resistance "Invalid" sentinels** (CSV value 65535) — CONFIRMED on L1 and L2. |
+| `0x0901` | 14       | `33 0c 00 00 33 0c 00 00 00 00 ff ff ff ff`       | Bytes 0..1 BE and 4..5 BE are paired dynamic u16 values in a narrow 13100..13290 raw band across L1 (110 V) and L2 (240 V) — **invariant in mains**, ruling out any mains-V interpretation. Weak correlation during active charge: vs pack V r=0.41 L2 / 0.10 L1; vs OBC V r=0.42 L2; vs SOC r=0.42. **Confirmed not in any iBMS export sheet**: scanned all 51 columns of `System state 0x93` and all 17 columns of `Charging 0x94` (10,536+3,494 rows, 7-day window) — no column has values in the 13000..13300 range. These bytes are wire-only fields the iBMS doesn't surface. Both u16s are quantized to 11-LSB steps. Bytes 3 and 7 cycle through `{0x00, 0x0B, 0x16}` (3-state on L2; only `{00, 0B}` was observed on L1), mirrored across the two u16 blocks (byte 3 == byte 7 in ~71 % of samples) — heartbeat or paired status, UNKNOWN. Trailing 4 bytes (10..13) are **`FF FF FF FF` = CC Resistance + CC2 Resistance "Invalid" sentinels** (CSV value 65535) — CONFIRMED on L1, L2, and in the export. |
 | `0x0902` | 14       | `00 00 00 00 00 00 00 00 00 00 00 00 00 00`       | **Invariant all-zero** across multi-hour active charging on L1 and L2 — CONFIRMED. Consistent with the CSV showing 0 / "Invalid" for CP freq., CP duty, and the three Charger-port-temp columns on this pack variant. Unused fields padded to zero. |
 
 ### X700 IoT subsystem — DIDs `0xA501`, `0xA502`, `0xA506`, `0xA507`, `0xA50E`
