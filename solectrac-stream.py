@@ -13,7 +13,7 @@ displays a real-time dashboard:
     * Per-cell voltages with min/max/spread (1-based BMS numbering).
     * Per-channel module temperatures (with the +40 C offset removed).
     * Vehicle-controller heartbeat state.
-    * Live alerts (low/high cell, spread, temp, AC budget, stale BMS).
+    * Live alerts (low/high cell, spread, temp, stale BMS).
 
 Data sources:
     --interface socketcan --channel can0    live SocketCAN bus
@@ -26,9 +26,9 @@ Examples:
     # Replay an existing capture
     solectrac-stream.py --replay session.log
 
-    # Live + raw logging + AC-budget alerts for a 120V/20A circuit
+    # Live + raw logging
     solectrac-stream.py --interface socketcan --channel can0 \\
-        --raw-log out.log --mains-v 120 --breaker-a 20
+        --raw-log out.log
 """
 
 import argparse
@@ -618,8 +618,7 @@ def active_bms_faults(state: State) -> List[Tuple[int, str]]:
 
 # --- alerts -----------------------------------------------------------------
 
-def evaluate_alerts(state: State, mains_v: float, breaker_a: float,
-                    efficiency: float, now: float) -> List[Tuple[str, str]]:
+def evaluate_alerts(state: State, now: float) -> List[Tuple[str, str]]:
     alerts: List[Tuple[str, str]] = []
 
     for i, c in enumerate(state.cells):
@@ -655,22 +654,6 @@ def evaluate_alerts(state: State, mains_v: float, breaker_a: float,
             alerts.append(("WARN",
                            f"temp delta {delta} °C ({delta * 9 / 5:.0f} °F)"
                            f" > 10 °C"))
-
-    # AC-supply budget (only meaningful while the charger is actively
-    # delivering, i.e. the FF50 fault-flag byte is clear).
-    chgr_active = (state.chgr_flags.value == CHGR_FLAGS_DELIVERING
-                   and not state.chgr_flags.is_stale(now))
-    pack_v = primary_pack_v(state)
-    if (chgr_active and pack_v.value
-            and state.pack_i_a.value is not None
-            and state.pack_i_a.value < 0):
-        dc_w = pack_v.value * -state.pack_i_a.value
-        ac_w = dc_w / max(efficiency, 0.01)
-        ac_a = ac_w / max(mains_v, 1.0)
-        if ac_a > 0.8 * breaker_a:
-            alerts.append(("WARN",
-                           f"est AC draw {ac_a:.1f} A > 80% of "
-                           f"{breaker_a:.0f} A breaker"))
 
     # Stale BMS heartbeat while VC says we're awake.
     if (state.frames > 100
@@ -812,8 +795,7 @@ def render_header(state: State, now: float, mode: str = "live") -> Panel:
                  border_style="cyan")
 
 
-def render_pack(state: State, mains_v: float, efficiency: float,
-                now: float) -> Panel:
+def render_pack(state: State, now: float) -> Panel:
     t = Table.grid(padding=(0, 2))
     t.add_column(justify="left")
     t.add_column(justify="left")
@@ -822,8 +804,6 @@ def render_pack(state: State, mains_v: float, efficiency: float,
     t.add_row("voltage", fmt(pack_v_ch, "{:.2f}", "V", now))
 
     pi = state.pack_i_a.value
-    chgr_active = (state.chgr_flags.value == CHGR_FLAGS_DELIVERING
-                   and not state.chgr_flags.is_stale(now))
     if pi is None:
         i_text = Text("---", style="dim")
     else:
@@ -896,13 +876,6 @@ def render_pack(state: State, mains_v: float, efficiency: float,
         dc_w = pack_v_ch.value * -pi
         p_style = "green" if dc_w > 0 else None
         t.add_row("power", Text(f"{dc_w:+.0f} W", style=p_style))
-        if chgr_active and dc_w > 0:
-            ac_w = dc_w / max(efficiency, 0.01)
-            ac_a = ac_w / max(mains_v, 1.0)
-            t.add_row("AC est",
-                      Text(f"+{ac_w:.0f} W  ({ac_a:.1f} A @ {mains_v:.0f} V, "
-                           f"{efficiency * 100:.0f}% eff)",
-                           style="green"))
 
     # 60 s sparkline of pack power. Glyphs above the baseline (red) =
     # drawing, below (green) = charging. Empty until the first F100F3.
@@ -1500,7 +1473,7 @@ def build_layout(state: State, args, now: float, mode: str = "live") -> Layout:
     )
     layout["header"].update(render_header(state, now, mode))
     layout["row1"].split_row(
-        Layout(render_pack(state, args.mains_v, args.efficiency, now)),
+        Layout(render_pack(state, now)),
         Layout(render_charger(state, now)),
     )
     layout["cells"].split_row(
@@ -1512,8 +1485,7 @@ def build_layout(state: State, args, now: float, mode: str = "live") -> Layout:
         Layout(render_vc(state, now)),
     )
     layout["faults"].update(render_faults(state, now))
-    alerts = evaluate_alerts(state, args.mains_v, args.breaker_a,
-                             args.efficiency, now)
+    alerts = evaluate_alerts(state, now)
     layout["alerts"].update(render_alerts(alerts))
     return layout
 
@@ -1927,12 +1899,6 @@ def main() -> int:
                    help="remote port for network interfaces (e.g. socketcand)")
     p.add_argument("--raw-log",
                    help="write a python-can log of all received frames")
-    p.add_argument("--mains-v", type=float, default=120.0,
-                   help="AC supply voltage for AC-draw estimate (default 120)")
-    p.add_argument("--breaker-a", type=float, default=20.0,
-                   help="AC breaker rating for alerting (default 20)")
-    p.add_argument("--efficiency", type=float, default=0.85,
-                   help="assumed AC->DC charger efficiency (default 0.85)")
     p.add_argument("--refresh-hz", type=float, default=5.0,
                    help="TUI refresh rate (default 5)")
     p.add_argument("--start", type=float, default=0.0,
