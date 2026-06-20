@@ -28,21 +28,21 @@ split. Confusing them is the most common way to go wrong here.
 ## Architecture
 
 ### Shared decoder core
-`solectrac_proto.py` is the **single source of truth** for the main-bus J1939
+`solecan_proto.py` is the **single source of truth** for the main-bus J1939
 protocol: source-address (SA) map, PGN identifiers, BMS fault-bit tables, and
-voltage/current/temperature scalings. Both `solectrac-analyze.py` and
-`solectrac-stream.py` import it. Rule of thumb enforced by the code: protocol
-facts and scalings live in `solectrac_proto.py`; **display-only** tables
+voltage/current/temperature scalings. Both `solecan-analyze.py` and
+`solecan-stream.py` import it. Rule of thumb enforced by the code: protocol
+facts and scalings live in `solecan_proto.py`; **display-only** tables
 (human-readable lamp text, error-code descriptions) live in the script that
 renders them. When adding a signal, put the encoding in the proto module and the
 presentation in the consumer.
 
 ### Main-bus tools (root)
-- `solectrac-analyze.py` — offline batch decoder. Reads any `python-can`
+- `solecan-analyze.py` — offline batch decoder. Reads any `python-can`
   `LogReader` format and emits tidy long-format CSVs (`signals.csv`,
   `frames.csv`, `decoders.csv`, `can_ids.csv`). `frame_index` joins
   `signals.csv` → `frames.csv` so any value traces back to its source bytes.
-- `solectrac-stream.py` — live/replayed `rich` TUI dashboard. Also serves the
+- `solecan-stream.py` — live/replayed `rich` TUI dashboard. Also serves the
   decoded JSON over HTTP. Decodes the same frames as the analyzer.
 - `util/` — bus injection probes (`mc_inject.py`, `solectrac-inject-f108.py`)
   that transmit modified frames to map how the cluster renders codes. These
@@ -84,14 +84,14 @@ sufficient for the analyzer and stream TUI (`python-can`, `pyserial`, `rich`).
 
 ```bash
 # Offline decode of captures -> CSVs in OUTDIR
-python3 solectrac-analyze.py -o out capture1.asc capture2.blf
+python3 solecan-analyze.py -o out capture1.asc capture2.blf
 
 # Live TUI from a CAN interface (any python-can interface works)
-python3 solectrac-stream.py --interface slcan --channel /dev/cu.usbmodem101 --bitrate 250000
-python3 solectrac-stream.py --interface socketcan --channel can0 --bitrate 250000
+python3 solecan-stream.py --interface slcan --channel /dev/cu.usbmodem101 --bitrate 250000
+python3 solecan-stream.py --interface socketcan --channel can0 --bitrate 250000
 
 # Replay a capture
-python3 solectrac-stream.py --replay session.log
+python3 solecan-stream.py --replay session.log
 
 # BMS UDS diagnostics dashboard
 python3 bms/solectrac-bms-diagnostics.py

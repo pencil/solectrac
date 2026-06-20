@@ -2,15 +2,15 @@
 
 J1939 CAN-bus tooling for a Solectrac electric tractor:
 
-* `solectrac-analyze.py` — offline batch decoder. Reads CAN logs and writes
+* `solecan-analyze.py` — offline batch decoder. Reads CAN logs and writes
   long-format CSVs suitable for spreadsheets, pandas, or plotting.
-* `solectrac-stream.py` — live TUI dashboard. Decodes the same frames in
+* `solecan-stream.py` — live TUI dashboard. Decodes the same frames in
   real time or replayed log file.
 
-## solectrac-analyze.py
+## solecan-analyze.py
 
 ```sh
-python3 solectrac-analyze.py [-o OUTDIR] file1.asc [file2.blf ...]
+python3 solecan-analyze.py [-o OUTDIR] file1.asc [file2.blf ...]
 ```
 
 Inputs are read via `python-can`'s `LogReader`, so any format `python-can`
@@ -56,7 +56,7 @@ Signal names use a `domain.name` (or `domain.NN.name`) convention —
 `cell.NN.voltage_v`, `pack.voltage_v`, `motor.rpm_signed`, `bms.fault.code_NNN`,
 `dm1.dtc.spn`, etc. The complete list with formulas, byte positions, and
 confidence levels lives in `decoders.csv`; the module docstring at the top of
-`solectrac-analyze.py` documents each signal in detail.
+`solecan-analyze.py` documents each signal in detail.
 
 [tidy]: https://vita.had.co.nz/papers/tidy-data.pdf
 
@@ -89,19 +89,19 @@ id, ext, count, priority, R, DP, PF, PS, SA, PGN, PDU, PS_role, name
 One row per distinct CAN ID seen, with the J1939 field breakdown described
 [below](#j1939-id-reference).
 
-## solectrac-stream.py
+## solecan-stream.py
 
 Live (or replayed) BMS / charger / motor dashboard. Decodes the same
-J1939 frames as `solectrac-analyze.py`.
+J1939 frames as `solecan-analyze.py`.
 
-![solectrac-stream TUI](screenshot.svg)
+![solecan-stream TUI](screenshot.svg)
 
 ```sh
 # Live capture using slcan
-solectrac-stream.py --interface slcan --channel /dev/cu.usbmodem101 --bitrate 250000
+solecan-stream.py --interface slcan --channel /dev/cu.usbmodem101 --bitrate 250000
 
 # Replay an existing capture
-solectrac-stream.py --replay session.log
+solecan-stream.py --replay session.log
 ```
 
 Displays pack voltage / current / DC and estimated AC power, SOC estimate

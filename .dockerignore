@@ -8,8 +8,8 @@ out/
 embedded/esp32-s3/.env
 
 # Host-side Python tooling — not needed for the firmware build.
-solectrac-*.py
-solectrac_proto.py
+solecan-*.py
+solecan_proto.py
 util/
 bms/
 screenshot.svg

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-solectrac-stream.py — Live (or replayed) CAN UI for the
+solecan-stream.py — Live (or replayed) CAN UI for the
 Solectrac CAN bus.
 
-Decodes the same J1939-style frames as solectrac-analyze.py, but
+Decodes the same J1939-style frames as solecan-analyze.py, but
 streams from a live CAN interface (or a python-can log file) and
 displays a real-time dashboard:
 
@@ -21,13 +21,13 @@ Data sources:
 
 Examples:
     # Live capture from SocketCAN
-    solectrac-stream.py --interface socketcan --channel can0 --bitrate 250000
+    solecan-stream.py --interface socketcan --channel can0 --bitrate 250000
 
     # Replay an existing capture
-    solectrac-stream.py --replay session.log
+    solecan-stream.py --replay session.log
 
     # Live + raw logging
-    solectrac-stream.py --interface socketcan --channel can0 \\
+    solecan-stream.py --interface socketcan --channel can0 \\
         --raw-log out.log
 """
 
@@ -61,7 +61,7 @@ except ImportError:
     print("rich is required: pip install rich", file=sys.stderr)
     sys.exit(1)
 
-from solectrac_proto import (
+from solecan_proto import (
     SRC_BMS, SRC_BMS_CHGR_IF, SRC_CHARGER, SRC_VEHICLE, SRC_MOTOR, SRC_DASH,
     PGN_CELL_FIRST, PGN_CELL_LAST, PGN_TEMP_FIRST, PGN_TEMP_LAST,
     PGN_F100, PGN_F102, PGN_F104, PGN_F106, PGN_F107, PGN_F108,
@@ -238,7 +238,7 @@ KMH_TO_MPH = 0.6213712
 
 # Charger fault flags (FF50E5 byte 4, Elcon/TC protocol). 0x00 means the
 # OBC is actively delivering charge; any set bit names why it isn't.
-# Per-bit names live in solectrac_proto.CHGR_FLAG_NAMES.
+# Per-bit names live in solecan_proto.CHGR_FLAG_NAMES.
 CHGR_FLAGS_DELIVERING = 0x00
 
 STALE_S = 2.0  # mark a channel stale if no update for this long
@@ -432,7 +432,7 @@ import re
 
 # --- decoder routing -------------------------------------------------------
 
-# Canonical signal name (as emitted by solectrac_proto.decode) → State
+# Canonical signal name (as emitted by solecan_proto.decode) → State
 # attribute that owns the Channel. Unknown names are silently ignored so
 # stream is forward-compatible with signals analyze.py emits but stream
 # doesn't yet track (e.g. pack.current_raw).
@@ -507,7 +507,7 @@ _FAULT_BYTE_NAME = re.compile(r"^bms\.fault\.byte(\d)$")
 def decode(msg: "can.Message", state: State, now: float) -> None:
     """Update state from a single CAN frame.
 
-    The byte-level decode lives in solectrac_proto.decode(); this wrapper
+    The byte-level decode lives in solecan_proto.decode(); this wrapper
     routes emit(name, value, unit) calls to the matching State Channel
     (with volts→mV conversion for cells), tracks derived state
     (power_history + trapezoidal Wh integration on pack.power_w,

@@ -1,6 +1,6 @@
 """
-solectrac_proto — shared protocol constants and helpers for the Solectrac
-CAN bus decoders (solectrac-analyze.py and solectrac-stream.py).
+solecan_proto — shared protocol constants and helpers for the Solectrac
+CAN bus decoders (solecan-analyze.py and solecan-stream.py).
 
 This module is the single source of truth for J1939 SA / PGN identifiers,
 BMS fault-bit tables, voltage / current / temperature scalings, and the

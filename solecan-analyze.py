@@ -3,7 +3,7 @@
 Decode J1939-style CAN logs from a small electric tractor BMS / charger.
 
 Usage:
-    python3 solectrac-analyze.py [-o OUTDIR] file1.asc [file2.blf ...]
+    python3 solecan-analyze.py [-o OUTDIR] file1.asc [file2.blf ...]
 
 Inputs are read via python-can's LogReader, so any format python-can
 understands works: .asc (Vector ASCII), .blf, .log (canutils), .trc, and
@@ -308,7 +308,7 @@ except ImportError:
     print("python-can is required: pip install python-can", file=sys.stderr)
     sys.exit(1)
 
-from solectrac_proto import (
+from solecan_proto import (
     SRC_BMS, SRC_BMS_CHGR_IF, SRC_CHARGER, SRC_VEHICLE, SRC_MOTOR, SRC_DASH,
     PGN_CELL_FIRST, PGN_CELL_LAST, PGN_TEMP_FIRST, PGN_TEMP_LAST,
     PGN_F100, PGN_F102, PGN_F104, PGN_F106, PGN_F107, PGN_F108,
@@ -466,7 +466,7 @@ def decode_file(path: Path, scenario: str, rows: list, frames: list,
                 counts: dict, id_counts: dict):
     """Stream one log via python-can; append decoded rows + frames in-place.
 
-    The actual byte-level decoding lives in solectrac_proto.decode(); this
+    The actual byte-level decoding lives in solecan_proto.decode(); this
     wrapper drives it with an emit callback that captures (name, value, unit)
     tuples (with per-name rounding and zero-suppression applied at emit
     time) and a category-driven counter update.
