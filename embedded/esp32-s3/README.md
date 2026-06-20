@@ -190,8 +190,8 @@ The `Dockerfile` builds the firmware in a pinned, reproducible environment
 **Build the firmware in Docker, then flash from the host** — Docker Desktop on
 macOS cannot reach the board's USB serial port.
 
-The build context is the **repo root** (the firmware embeds the Android
-`dashboard.html`). From the repo root:
+The build context is the **repo root** (the firmware embeds the canonical
+`dashboard.html` shared with the Android app). From the repo root:
 
 ```bash
 docker build -f embedded/esp32-s3/Dockerfile -t solectrac-fw .
@@ -310,8 +310,10 @@ refused so the existing clients aren't disturbed.
 esp32-s3/
 ├── platformio.ini          # board envs + build configuration
 ├── boards/                 # custom board JSONs (LilyGo T-2CAN)
+├── copy_dashboard.py       # pre-build: copies repo-root dashboard.html → src/
+├── inject_build_overrides.py # pre-build: injects AP_SSID / AP_PASS / MDNS_NAME
 ├── README.md               # this file
 └── src/
     ├── main.cpp            # all firmware code (decode, HTTP, SLCAN, socketcand, LED)
-    └── dashboard.html      # embedded into firmware at build time
+    └── dashboard.html      # copied in by copy_dashboard.py; gitignored
 ```

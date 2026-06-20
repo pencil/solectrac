@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Single source of truth for the dashboard HTML lives at the repo root
+// (../../dashboard.html). The ESP32 firmware build copies it the same way.
+val copyDashboardAsset by tasks.registering(Copy::class) {
+    from(rootProject.file("../dashboard.html"))
+    into(layout.projectDirectory.dir("src/main/assets"))
+}
+tasks.named("preBuild") { dependsOn(copyDashboardAsset) }
+
 android {
     namespace = "com.schmitztech.solectrac.dashboard"
     compileSdk = 34

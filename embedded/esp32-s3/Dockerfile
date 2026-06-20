@@ -1,7 +1,8 @@
 # Reproducible build environment for the Solectrac ESP32-S3 CAN-monitor firmware.
 #
-# The build context is the repo ROOT, because the firmware embeds the dashboard
-# (src/dashboard.html is a symlink into the Android tree). From the repo root:
+# The build context is the repo ROOT, because the firmware embeds the canonical
+# dashboard.html that lives at the repo root (shared with the Android app).
+# From the repo root:
 #
 #   docker build -f embedded/esp32-s3/Dockerfile -t solectrac-fw .
 #
@@ -29,10 +30,10 @@ WORKDIR /project
 # Copy the firmware project (board defs, platformio.ini, src/).
 COPY embedded/esp32-s3/ ./
 
-# src/dashboard.html is a symlink into the Android tree; Docker COPY does not
-# dereference symlinks, so replace it with the real file (board_build.embed_txtfiles
-# bakes it into the binary at build time).
-COPY android/app/src/main/assets/dashboard.html ./src/dashboard.html
+# The canonical dashboard.html lives at the repo root and is gitignored
+# inside the firmware tree. Place it where board_build.embed_txtfiles
+# expects it (copy_dashboard.py treats a pre-placed file as authoritative).
+COPY dashboard.html ./src/dashboard.html
 
 # All of these are optional and embedded at compile time; leave them empty to
 # keep the firmware's built-in defaults. WIFI_SSID / WIFI_PASS are the home

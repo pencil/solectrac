@@ -68,12 +68,22 @@ from the NUS characteristic. `android/README.md` has details (note: it still
 refers to the firmware as `esp32/`; the real path is `embedded/esp32-s3/`).
 
 ### Shared dashboard HTML
-`android/app/src/main/assets/dashboard.html` is the canonical dashboard (loaded
-by the Android WebView). `embedded/esp32-s3/src/dashboard.html` is a **symlink**
-to it, and the firmware embeds it at build time via `board_build.embed_txtfiles`.
-The Docker build uses the repo root as its context and copies the real Android
-file over the symlink in-image, because Docker `COPY` does not dereference
-symlinks.
+`dashboard.html` at the repo root is the **single tracked copy**. Both
+consumers copy it into place at build time:
+
+- Android (`android/app/build.gradle.kts`) registers a `copyDashboardAsset`
+  task that runs before `preBuild` and copies it into
+  `android/app/src/main/assets/dashboard.html`.
+- ESP32 (`embedded/esp32-s3/copy_dashboard.py`, wired in via
+  `extra_scripts = pre:copy_dashboard.py`) copies it to
+  `embedded/esp32-s3/src/dashboard.html` so `board_build.embed_txtfiles` can
+  bake it into the firmware binary.
+
+Both destinations are gitignored, so the file cannot drift — there is only
+one tracked copy. The Docker build uses the repo root as its context and
+places `dashboard.html` directly at `embedded/esp32-s3/src/dashboard.html`;
+`copy_dashboard.py` treats a pre-placed file as authoritative when the shared
+source isn't present in the build context.
 
 ## Commands
 

@@ -13,3 +13,7 @@ solecan_proto.py
 util/
 bms/
 screenshot.svg
+
+# Android sources — not needed; the firmware only consumes the canonical
+# dashboard.html from the repo root (copied in by the Dockerfile).
+android/

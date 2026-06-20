@@ -6,3 +6,7 @@ out/
 
 # Build secrets (AP/WiFi credentials). Copy .env.example -> .env.
 .env
+
+# Copied in at build time from the repo-root dashboard.html
+# (see copy_dashboard.py).
+src/dashboard.html

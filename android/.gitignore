@@ -9,3 +9,7 @@ captures/
 .cxx/
 local.properties
 gradle/wrapper/gradle-wrapper.jar
+
+# Copied in at build time from the repo-root dashboard.html
+# (see app/build.gradle.kts -> copyDashboardAsset).
+app/src/main/assets/dashboard.html

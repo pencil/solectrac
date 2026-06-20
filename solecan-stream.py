@@ -1556,7 +1556,7 @@ def open_source(args):
 #
 # When run with --ui web, we expose the same `/` and `/json` endpoints the
 # firmware does, so the existing dashboard.html (the single source of truth,
-# in android/app/src/main/assets/) can render against replayed or live data.
+# at the repo root) can render against replayed or live data.
 # state_to_json mirrors the firmware's buildJson(minimal=false) shape closely
 # enough that the dashboard reads the same fields.
 
@@ -1728,13 +1728,10 @@ def state_to_json(state: State, now: float, mode: str) -> dict:
     return out
 
 
-# Located by walking up from this script to the repo root. Single source of
-# truth: the Android app's WebView assets directory. The firmware symlinks its
-# embedded copy at embedded/esp32-s3/src/dashboard.html to this same file.
-DASHBOARD_HTML_PATH = (
-    Path(__file__).resolve().parent
-    / "android" / "app" / "src" / "main" / "assets" / "dashboard.html"
-)
+# Single source of truth: the canonical dashboard.html at the repo root.
+# Both the Android build and the ESP32 firmware build copy this file into
+# their consumer-specific locations at build time; this script just reads it.
+DASHBOARD_HTML_PATH = Path(__file__).resolve().parent / "dashboard.html"
 
 
 def serve_web(state: State, mode: str, host: str, port: int,

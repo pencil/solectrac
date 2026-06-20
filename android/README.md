@@ -1,10 +1,13 @@
 # Solectrac Android app
 
-Mirrors the ESP32's web dashboard (`esp32/src/dashboard.html`) over BLE so the
-phone doesn't have to join the `tractor` WiFi network. The app loads the same
-HTML inside a `WebView` and pipes JSON snapshots — pushed from the ESP32's
-Nordic UART Service whenever any displayed signal changes — into the page via a
+Mirrors the ESP32's web dashboard over BLE so the phone doesn't have to join
+the `tractor` WiFi network. The app loads the same HTML inside a `WebView`
+and pipes JSON snapshots — pushed from the ESP32's Nordic UART Service
+whenever any displayed signal changes — into the page via a
 `@JavascriptInterface` bridge.
+
+The dashboard HTML lives at the repo root (`/dashboard.html`) and is shared
+with the firmware; see "Shared dashboard HTML" in `CLAUDE.md`.
 
 ## One-time setup
 
@@ -31,12 +34,9 @@ gradle wrapper --gradle-version 8.7
   status bar that auto-hides on connect, exposes the `SolectracBridge` JS
   interface, and forwards each JSON message via
   `window.dispatchSolectracUpdate(...)`.
-- `assets/dashboard.html` — **manual copy** of `esp32/src/dashboard.html`.
-  After editing the master, re-copy:
-
-  ```bash
-  cp ../esp32/src/dashboard.html app/src/main/assets/dashboard.html
-  ```
+- `assets/dashboard.html` — copied in from the repo-root canonical
+  `dashboard.html` by the `copyDashboardAsset` Gradle task before each build.
+  The destination is gitignored; edit the root file, not this one.
 
 ## Permissions
 
