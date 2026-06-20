@@ -1,5 +1,7 @@
-# Keep the Docker build context small. Only the firmware project and the
-# embedded dashboard asset are needed.
+# Shared by all three Dockerfiles (root Python, embedded/esp32-s3, android).
+# Universal excludes — VCS, build artifacts, secrets. Per-Dockerfile COPYs
+# determine what actually ends up in each image; any extras here just keep
+# the build-context tar smaller.
 .git
 **/.pio
 **/__pycache__
@@ -7,13 +9,13 @@
 out/
 embedded/esp32-s3/.env
 
-# Host-side Python tooling — not needed for the firmware build.
-solecan-*.py
-solecan_proto.py
-util/
-bms/
-screenshot.svg
-
-# Android sources — not needed; the firmware only consumes the canonical
-# dashboard.html from the repo root (copied in by the Dockerfile).
-android/
+# Android-local artifacts (mirrors android/.gitignore). Keep the Android
+# tree itself in context — android/Dockerfile copies it.
+android/.gradle/
+android/.idea/
+android/build/
+android/app/build/
+android/captures/
+android/app/captures/
+android/local.properties
+android/gradle/wrapper/gradle-wrapper.jar
